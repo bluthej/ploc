@@ -1,3 +1,4 @@
+use std::ptr;
 use std::{fmt::Display, marker::PhantomData, ptr::NonNull};
 
 #[derive(Debug)]
@@ -17,9 +18,9 @@ struct Edge {
 
 impl Display for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [xo, yo] = self.origin.0;
+        let [xo, yo] = self.origin.coords;
         if let Some(next) = self.next {
-            let [xn, yn] = unsafe { (*next.as_ptr()).origin.0 };
+            let [xn, yn] = unsafe { (*next.as_ptr()).origin.coords };
             write!(f, "({}, {})->({}, {})", xo, yo, xn, yn)
         } else {
             write!(f, "({}, {})->(None)", xo, yo)
@@ -28,11 +29,23 @@ impl Display for Edge {
 }
 
 #[derive(Debug)]
-struct Vertex([f32; 2]);
+struct Vertex {
+    coords: [f32; 2],
+    edge: Link,
+}
+
+impl Vertex {
+    fn new_with_coords(x: f32, y: f32) -> Self {
+        Self {
+            coords: [x, y],
+            edge: None,
+        }
+    }
+}
 
 impl Display for Vertex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Vertex([x, y]) = self;
+        let [x, y] = self.coords;
         write!(f, "({}, {})", x, y)
     }
 }
@@ -57,13 +70,13 @@ impl Face {
         }
     }
 
-    fn push(&mut self, coords: [f32; 2]) {
+    fn push(&mut self, vert: Vertex) {
         // SAFETY: it's a linked-list, what do you want?
         unsafe {
             let new = NonNull::new_unchecked(Box::into_raw(Box::new(Edge {
                 next: None,
                 prev: None,
-                origin: Vertex(coords),
+                origin: vert,
             })));
             if let Some(old) = self.boundary {
                 // Put the new front before the old one
@@ -190,9 +203,9 @@ mod tests {
     #[test]
     fn create_face() {
         let mut face = Face::new();
-        face.push([0., 0.]);
-        face.push([1., 0.]);
-        face.push([0., 1.]);
+        face.push(Vertex::new_with_coords(0., 0.));
+        face.push(Vertex::new_with_coords(1., 0.));
+        face.push(Vertex::new_with_coords(0., 1.));
         face.close();
 
         assert_eq!(face.len, 3);
