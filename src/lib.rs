@@ -77,7 +77,7 @@ impl Dcel {
         }
     }
 
-    fn from_polygon_soup(vertices: &[[f32; 2]], polygons: &[[usize; 3]]) -> Self {
+    fn from_polygon_soup<const N: usize>(vertices: &[[f32; 2]], polygons: &[[usize; N]]) -> Self {
         let mut verts = Vec::with_capacity(vertices.len());
         for &coords in vertices {
             verts.push(Vertex {
@@ -94,13 +94,10 @@ impl Dcel {
                 start: current_hedge_id,
             });
 
-            let n_verts = polygon.len();
             for (iloc, &vert) in polygon.iter().enumerate() {
                 let (prev, next) = match iloc {
-                    0 => (current_hedge_id + n_verts - 1, current_hedge_id + 1),
-                    ivert if ivert == n_verts - 1 => {
-                        (current_hedge_id - 1, current_hedge_id + 1 - n_verts)
-                    }
+                    0 => (current_hedge_id + N - 1, current_hedge_id + 1),
+                    ivert if ivert == N - 1 => (current_hedge_id - 1, current_hedge_id + 1 - N),
                     _ => (current_hedge_id - 1, current_hedge_id + 1),
                 };
                 hedges.push(Hedge {
@@ -120,6 +117,18 @@ impl Dcel {
             faces,
             hedges,
         }
+    }
+
+    fn get_face_coords(&self, face: usize) -> Vec<[f32; 2]> {
+        self.iter_face_vertices(face)
+            .map(|vert| vert.coords)
+            .collect()
+    }
+
+    fn get_face_vertex_ids(&self, face: usize) -> Vec<usize> {
+        self.iter_face_hedges(face)
+            .map(|hedge| hedge.origin)
+            .collect()
     }
 }
 
@@ -169,30 +178,43 @@ mod tests {
 
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
-        let verts: Vec<_> = dcel.iter_face_vertices(0).map(|vert| vert.coords).collect();
+        let vertex_ids = dcel.get_face_vertex_ids(0);
+        assert_eq!(vertex_ids, polygons[0]);
+        let verts = dcel.get_face_coords(0);
         assert_eq!(verts, vertices);
-        let hedges: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.origin).collect();
-        assert_eq!(hedges, &polygons[0]);
     }
 
     #[test]
     fn create_two_triangle_dcel_from_polygon_soup() {
+        //
+        //   2       3
+        //   +-------+
+        //   |\      |
+        //   | \  1  |
+        //   |  \    |
+        //   |   \   |
+        //   |    \  |
+        //   |  0  \ |
+        //   |      \|
+        //   +-------+
+        //   0       1
+        //
         let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let polygons = vec![[0, 1, 3], [1, 2, 3]];
 
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
-        // Check vertices
-        let verts: Vec<_> = dcel.iter_face_vertices(0).map(|vert| vert.coords).collect();
-        assert_eq!(verts, vec![[0., 0.], [1., 0.], [0., 1.]]);
-        let verts: Vec<_> = dcel.iter_face_vertices(1).map(|vert| vert.coords).collect();
-        assert_eq!(verts, vec![[1., 0.], [1., 1.], [0., 1.]]);
+        // Check vertex ids
+        for face in [0, 1] {
+            let vertex_ids = dcel.get_face_vertex_ids(face);
+            assert_eq!(vertex_ids, polygons[face]);
+        }
 
-        // Check half-edges
-        let hedges: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.origin).collect();
-        assert_eq!(hedges, vec![0, 1, 3]);
-        let hedges: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.origin).collect();
-        assert_eq!(hedges, vec![1, 2, 3]);
+        // Check vertex coordinates
+        let verts = dcel.get_face_coords(0);
+        assert_eq!(verts, vec![[0., 0.], [1., 0.], [0., 1.]]);
+        let verts = dcel.get_face_coords(1);
+        assert_eq!(verts, vec![[1., 0.], [1., 1.], [0., 1.]]);
 
         // Check face ids
         for face in [0, 1] {
@@ -204,11 +226,83 @@ mod tests {
         // Check next and prev
         let nexts: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.next).collect();
         assert_eq!(nexts, vec![1, 2, 0]);
-        let nexts: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![4, 5, 3]);
         let prevs: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.prev).collect();
         assert_eq!(prevs, vec![2, 0, 1]);
+        let nexts: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.next).collect();
+        assert_eq!(nexts, vec![4, 5, 3]);
         let prevs: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.prev).collect();
         assert_eq!(prevs, vec![5, 3, 4]);
+    }
+
+    #[test]
+    fn create_four_quadrangles_from_polygon_soup() {
+        //
+        //         7
+        // 6 +-----+-----+ 8
+        //   |     |     |
+        //   |  2  |  3  |
+        //   |     |     |
+        // 3 +-----4-----+ 5
+        //   |     |     |
+        //   |  0  |  1  |
+        //   |     |     |
+        //   +-----+-----+
+        //   0     1     2
+        //
+
+        let vertices = vec![
+            [0., 0.],
+            [1., 0.],
+            [2., 0.],
+            [0., 1.],
+            [1., 1.],
+            [2., 1.],
+            [0., 2.],
+            [1., 2.],
+            [2., 2.],
+        ];
+        let polygons = vec![[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]];
+
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+
+        // Check vertex ids
+        for face in [0, 1] {
+            let vertex_ids = dcel.get_face_vertex_ids(face);
+            assert_eq!(vertex_ids, polygons[face]);
+        }
+
+        // Check vertex coordinates
+        let verts = dcel.get_face_coords(0);
+        assert_eq!(verts, vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]]);
+        let verts = dcel.get_face_coords(1);
+        assert_eq!(verts, vec![[1., 0.], [2., 0.], [2., 1.], [1., 1.]]);
+
+        // Check face ids
+        for face in [0, 1] {
+            for hedge in dcel.iter_face_hedges(face) {
+                assert_eq!(hedge.face, face);
+            }
+        }
+
+        // Check next and prev
+        let nexts: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.next).collect();
+        assert_eq!(nexts, vec![1, 2, 3, 0]);
+        let prevs: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.prev).collect();
+        assert_eq!(prevs, vec![3, 0, 1, 2]);
+
+        let nexts: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.next).collect();
+        assert_eq!(nexts, vec![5, 6, 7, 4]);
+        let prevs: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.prev).collect();
+        assert_eq!(prevs, vec![7, 4, 5, 6]);
+
+        let nexts: Vec<_> = dcel.iter_face_hedges(2).map(|hedge| hedge.next).collect();
+        assert_eq!(nexts, vec![9, 10, 11, 8]);
+        let prevs: Vec<_> = dcel.iter_face_hedges(2).map(|hedge| hedge.prev).collect();
+        assert_eq!(prevs, vec![11, 8, 9, 10]);
+
+        let nexts: Vec<_> = dcel.iter_face_hedges(3).map(|hedge| hedge.next).collect();
+        assert_eq!(nexts, vec![13, 14, 15, 12]);
+        let prevs: Vec<_> = dcel.iter_face_hedges(3).map(|hedge| hedge.prev).collect();
+        assert_eq!(prevs, vec![15, 12, 13, 14]);
     }
 }
