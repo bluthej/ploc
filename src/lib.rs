@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 #[derive(Debug)]
 struct Dcel {
@@ -87,22 +87,45 @@ impl Dcel {
         }
 
         let mut faces = Vec::with_capacity(polygons.len());
-        let mut hedges = Vec::new();
+        let mut hedges: Vec<Hedge> = Vec::new();
         let mut current_hedge_id = 0;
+        let mut edges = HashMap::with_capacity(polygons.len() * N);
         for (face, polygon) in polygons.iter().enumerate() {
             faces.push(Face {
                 start: current_hedge_id,
             });
 
             for (iloc, &vert) in polygon.iter().enumerate() {
+                // Determine previous and next half-edge id
                 let (prev, next) = match iloc {
                     0 => (current_hedge_id + N - 1, current_hedge_id + 1),
                     ivert if ivert == N - 1 => (current_hedge_id - 1, current_hedge_id + 1 - N),
                     _ => (current_hedge_id - 1, current_hedge_id + 1),
                 };
+
+                // Determine indices of edge vertices
+                let dest = if iloc == polygon.len() - 1 {
+                    polygon[0]
+                } else {
+                    polygon[iloc + 1]
+                };
+                let twin = if let Some(twin) = edges.remove(&(dest, vert)) {
+                    // We have already seen the current half-edge's twin, and we know the current
+                    // half-edge is its twin!
+                    let hedge: &mut Hedge = &mut hedges[twin];
+                    hedge.twin = current_hedge_id;
+                    // NOTE: We have to do this little dance for some reason, this will not compile:
+                    // hedges[twin].twin = current_hedge_id;
+                    twin
+                } else {
+                    // Store half-edge id to set the twin id later on
+                    edges.insert((vert, dest), current_hedge_id);
+                    usize::MAX
+                };
+
                 hedges.push(Hedge {
                     origin: vert,
-                    twin: usize::MAX,
+                    twin,
                     face,
                     next,
                     prev,
@@ -173,17 +196,18 @@ mod tests {
 
     fn two_triangles() -> (Vec<[f32; 2]>, Vec<[usize; 3]>) {
         //
-        //   2       3
-        //   +-------+
-        //   |\      |
-        //   | \  1  |
-        //   |  \    |
-        //   |   \   |
-        //   |    \  |
-        //   |  0  \ |
-        //   |      \|
-        //   +-------+
-        //   0       1
+        //                             Half-edges
+        //   2       3        |
+        //   +-------+        |        +-------+
+        //   |\      |        |        |\  4   |
+        //   | \  1  |        |        | \     |
+        //   |  \    |        |        |  \    |
+        //   |   \   |        |        |  1\5  |3
+        //   |    \  |        |        |2   \  |
+        //   |  0  \ |        |        |     \ |
+        //   |      \|        |        |   0  \|
+        //   +-------+        |        +-------+
+        //   0       1        |
         //
         let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let polygons = vec![[0, 1, 3], [1, 2, 3]];
@@ -192,17 +216,18 @@ mod tests {
 
     fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<[usize; 4]>) {
         //
-        //         7
-        // 6 +-----+-----+ 8
-        //   |     |     |
-        //   |  2  |  3  |
-        //   |     |     |
-        // 3 +-----4-----+ 5
-        //   |     |     |
-        //   |  0  |  1  |
-        //   |     |     |
-        //   +-----+-----+
-        //   0     1     2
+        //                                   Half-edges
+        //         7              |
+        // 6 +-----+-----+ 8      |        +-----+-----+
+        //   |     |     |        |        |  10 | 14  |
+        //   |  2  |  3  |        |        |11  9|15 13|
+        //   |     |     |        |        |  8  | 12  |
+        // 3 +-----4-----+ 5      |        +-----+-----+
+        //   |     |     |        |        |  2  |  6  |
+        //   |  0  |  1  |        |        |3   1|7   5|
+        //   |     |     |        |        |  0  |  4  |
+        //   +-----+-----+        |        +-----+-----+
+        //   0     1     2        |
         //
 
         let vertices = vec![
@@ -314,5 +339,44 @@ mod tests {
         assert_eq!(nexts, vec![13, 14, 15, 12]);
         let prevs: Vec<_> = dcel.iter_face_hedges(3).map(|hedge| hedge.prev).collect();
         assert_eq!(prevs, vec![15, 12, 13, 14]);
+    }
+
+    #[test]
+    fn twins() {
+        // Triangles
+        let (vertices, polygons) = two_triangles();
+
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+
+        assert_eq!(dcel.hedges[1].twin, 5);
+        assert_eq!(dcel.hedges[5].twin, 1);
+
+        for i in [1, 5] {
+            assert_eq!(
+                dcel.hedges[dcel.hedges[i].twin].origin,
+                dcel.hedges[dcel.hedges[i].next].origin
+            );
+        }
+
+        // Quadrangles
+        let (vertices, polygons) = four_quadrangles();
+
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+
+        assert_eq!(dcel.hedges[1].twin, 7);
+        assert_eq!(dcel.hedges[7].twin, 1);
+        assert_eq!(dcel.hedges[2].twin, 8);
+        assert_eq!(dcel.hedges[8].twin, 2);
+        assert_eq!(dcel.hedges[6].twin, 12);
+        assert_eq!(dcel.hedges[12].twin, 6);
+        assert_eq!(dcel.hedges[9].twin, 15);
+        assert_eq!(dcel.hedges[15].twin, 9);
+
+        for i in [1, 2, 6, 7, 8, 9, 12, 15] {
+            assert_eq!(
+                dcel.hedges[dcel.hedges[i].twin].origin,
+                dcel.hedges[dcel.hedges[i].next].origin
+            );
+        }
     }
 }
