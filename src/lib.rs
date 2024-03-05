@@ -171,21 +171,7 @@ impl<'a> Iterator for FaceHedgesIterator<'a> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn create_one_triangle_dcel_from_polygon_soup() {
-        let vertices = vec![[0., 0.], [1., 0.], [0., 1.]];
-        let polygons = vec![[0, 1, 2]];
-
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
-
-        let vertex_ids = dcel.get_face_vertex_ids(0);
-        assert_eq!(vertex_ids, polygons[0]);
-        let verts = dcel.get_face_coords(0);
-        assert_eq!(verts, vertices);
-    }
-
-    #[test]
-    fn create_two_triangle_dcel_from_polygon_soup() {
+    fn two_triangles() -> (Vec<[f32; 2]>, Vec<[usize; 3]>) {
         //
         //   2       3
         //   +-------+
@@ -201,6 +187,55 @@ mod tests {
         //
         let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let polygons = vec![[0, 1, 3], [1, 2, 3]];
+        (vertices, polygons)
+    }
+
+    fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<[usize; 4]>) {
+        //
+        //         7
+        // 6 +-----+-----+ 8
+        //   |     |     |
+        //   |  2  |  3  |
+        //   |     |     |
+        // 3 +-----4-----+ 5
+        //   |     |     |
+        //   |  0  |  1  |
+        //   |     |     |
+        //   +-----+-----+
+        //   0     1     2
+        //
+
+        let vertices = vec![
+            [0., 0.],
+            [1., 0.],
+            [2., 0.],
+            [0., 1.],
+            [1., 1.],
+            [2., 1.],
+            [0., 2.],
+            [1., 2.],
+            [2., 2.],
+        ];
+        let polygons = vec![[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]];
+        (vertices, polygons)
+    }
+
+    #[test]
+    fn create_one_triangle_dcel_from_polygon_soup() {
+        let vertices = vec![[0., 0.], [1., 0.], [0., 1.]];
+        let polygons = vec![[0, 1, 2]];
+
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+
+        let vertex_ids = dcel.get_face_vertex_ids(0);
+        assert_eq!(vertex_ids, polygons[0]);
+        let verts = dcel.get_face_coords(0);
+        assert_eq!(verts, vertices);
+    }
+
+    #[test]
+    fn create_two_triangle_dcel_from_polygon_soup() {
+        let (vertices, polygons) = two_triangles();
 
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
@@ -236,32 +271,7 @@ mod tests {
 
     #[test]
     fn create_four_quadrangles_from_polygon_soup() {
-        //
-        //         7
-        // 6 +-----+-----+ 8
-        //   |     |     |
-        //   |  2  |  3  |
-        //   |     |     |
-        // 3 +-----4-----+ 5
-        //   |     |     |
-        //   |  0  |  1  |
-        //   |     |     |
-        //   +-----+-----+
-        //   0     1     2
-        //
-
-        let vertices = vec![
-            [0., 0.],
-            [1., 0.],
-            [2., 0.],
-            [0., 1.],
-            [1., 1.],
-            [2., 1.],
-            [0., 2.],
-            [1., 2.],
-            [2., 2.],
-        ];
-        let polygons = vec![[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]];
+        let (vertices, polygons) = four_quadrangles();
 
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
