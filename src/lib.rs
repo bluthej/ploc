@@ -35,10 +35,7 @@ struct Hedge {
 }
 
 struct FaceVerticesIterator<'a> {
-    dcel: &'a Dcel,
-    face: usize,
-    current: usize,
-    done: bool,
+    hedge_iterator: FaceHedgesIterator<'a>,
 }
 
 struct FaceHedgesIterator<'a> {
@@ -51,10 +48,7 @@ struct FaceHedgesIterator<'a> {
 impl Dcel {
     fn iter_face_vertices(&self, face: usize) -> FaceVerticesIterator {
         FaceVerticesIterator {
-            dcel: self,
-            face,
-            current: self.faces[face].start,
-            done: false,
+            hedge_iterator: self.iter_face_hedges(face),
         }
     }
 
@@ -159,17 +153,9 @@ impl<'a> Iterator for FaceVerticesIterator<'a> {
     type Item = &'a Vertex;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            return None;
-        }
-        let hedge = &self.dcel.hedges[self.current];
-        let vertex_id = hedge.origin;
-        self.current = hedge.next;
-        let start = self.dcel.faces[self.face].start;
-        if self.current == start {
-            self.done = true;
-        }
-        Some(&self.dcel.vertices[vertex_id])
+        self.hedge_iterator
+            .next()
+            .map(|hedge| &self.hedge_iterator.dcel.vertices[hedge.origin])
     }
 }
 
