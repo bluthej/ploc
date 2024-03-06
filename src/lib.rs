@@ -5,6 +5,7 @@ struct Dcel {
     vertices: Vec<Vertex>,
     faces: Vec<Face>,
     hedges: Vec<Hedge>,
+    contours: Vec<Face>,
 }
 
 #[derive(Debug)]
@@ -45,6 +46,13 @@ struct FaceHedgesIterator<'a> {
     done: bool,
 }
 
+struct ContourHedgesIterator<'a> {
+    dcel: &'a Dcel,
+    contour: usize,
+    current: usize,
+    done: bool,
+}
+
 impl Dcel {
     fn iter_face_vertices(&self, face: usize) -> FaceVerticesIterator {
         FaceVerticesIterator {
@@ -57,6 +65,15 @@ impl Dcel {
             dcel: self,
             face,
             current: self.faces[face].start,
+            done: false,
+        }
+    }
+
+    fn iter_contour_hedges(&self, contour: usize) -> ContourHedgesIterator {
+        ContourHedgesIterator {
+            dcel: self,
+            contour,
+            current: self.contours[contour].start,
             done: false,
         }
     }
@@ -129,10 +146,52 @@ impl Dcel {
             }
         }
 
+        // Find boundary half-edges
+        // TODO: only works for one boundary, make it work when there are holes as well
+        let mut contours = Vec::new();
+        let first_outer_hedge_id = current_hedge_id;
+        contours.push(Face {
+            start: first_outer_hedge_id,
+        });
+        let start_id = *edges.values().min().unwrap();
+        let mut inner_hedge_id = start_id;
+        'outer: loop {
+            // These are wrong for the first and last half-edge of the contour, but this is fixed
+            // when exiting the loop
+            let next = current_hedge_id + 1;
+            let prev = current_hedge_id - 1;
+            hedges.push(Hedge {
+                origin: hedges[hedges[inner_hedge_id].next].origin,
+                twin: inner_hedge_id,
+                face: usize::MAX,
+                next,
+                prev,
+            });
+            hedges[inner_hedge_id].twin = current_hedge_id;
+            current_hedge_id += 1;
+            loop {
+                // Iterate over the current origin's `umbrella` to find the next hedge
+                inner_hedge_id = hedges[inner_hedge_id].prev;
+                if inner_hedge_id == start_id {
+                    // Means we are back at the start, time to fix the first and last half-edge
+                    let last_outer_hedge_id = current_hedge_id - 1;
+                    hedges[first_outer_hedge_id].prev = last_outer_hedge_id;
+                    hedges[last_outer_hedge_id].next = first_outer_hedge_id;
+                    break 'outer;
+                }
+                if hedges[inner_hedge_id].twin < usize::MAX {
+                    inner_hedge_id = hedges[inner_hedge_id].twin;
+                } else {
+                    break;
+                }
+            }
+        }
+
         Self {
             vertices: verts,
             faces,
             hedges,
+            contours,
         }
     }
 
@@ -176,6 +235,23 @@ impl<'a> Iterator for FaceHedgesIterator<'a> {
     }
 }
 
+impl<'a> Iterator for ContourHedgesIterator<'a> {
+    type Item = &'a Hedge;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        let hedge = &self.dcel.hedges[self.current];
+        self.current = hedge.next;
+        let start = self.dcel.contours[self.contour].start;
+        if self.current == start {
+            self.done = true;
+        }
+        Some(hedge)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,17 +259,17 @@ mod tests {
     fn two_triangles() -> (Vec<[f32; 2]>, Vec<[usize; 3]>) {
         //
         //                             Half-edges
-        //   2       3        |
+        //   3       2        |            8
         //   +-------+        |        +-------+
         //   |\      |        |        |\  4   |
         //   | \  1  |        |        | \     |
-        //   |  \    |        |        |  \    |
-        //   |   \   |        |        |  1\5  |3
+        //   |  \    |        |        |  \   3|
+        //   |   \   |        |       7|  1\5  |9
         //   |    \  |        |        |2   \  |
         //   |  0  \ |        |        |     \ |
         //   |      \|        |        |   0  \|
         //   +-------+        |        +-------+
-        //   0       1        |
+        //   0       1        |            6
         //
         let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let polygons = vec![[0, 1, 3], [1, 2, 3]];
@@ -203,17 +279,17 @@ mod tests {
     fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<[usize; 4]>) {
         //
         //                                   Half-edges
-        //         7              |
+        //         7              |           19   20
         // 6 +-----+-----+ 8      |        +-----+-----+
         //   |     |     |        |        |  10 | 14  |
-        //   |  2  |  3  |        |        |11  9|15 13|
+        //   |  2  |  3  |        |      18|11  9|15 13|21
         //   |     |     |        |        |  8  | 12  |
         // 3 +-----4-----+ 5      |        +-----+-----+
         //   |     |     |        |        |  2  |  6  |
-        //   |  0  |  1  |        |        |3   1|7   5|
+        //   |  0  |  1  |        |      17|3   1|7   5|22
         //   |     |     |        |        |  0  |  4  |
         //   +-----+-----+        |        +-----+-----+
-        //   0     1     2        |
+        //   0     1     2        |          16     23
         //
 
         let vertices = vec![
@@ -278,6 +354,13 @@ mod tests {
         assert_eq!(nexts, vec![4, 5, 3]);
         let prevs: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.prev).collect();
         assert_eq!(prevs, vec![5, 3, 4]);
+
+        // Check contour
+        let origins: Vec<_> = dcel
+            .iter_contour_hedges(0)
+            .map(|hedge| hedge.origin)
+            .collect();
+        assert_eq!(origins, vec![1, 0, 3, 2]);
     }
 
     #[test]
@@ -325,6 +408,13 @@ mod tests {
         assert_eq!(nexts, vec![13, 14, 15, 12]);
         let prevs: Vec<_> = dcel.iter_face_hedges(3).map(|hedge| hedge.prev).collect();
         assert_eq!(prevs, vec![15, 12, 13, 14]);
+
+        // Check contour
+        let origins: Vec<_> = dcel
+            .iter_contour_hedges(0)
+            .map(|hedge| hedge.origin)
+            .collect();
+        assert_eq!(origins, vec![1, 0, 3, 6, 7, 8, 5, 2]);
     }
 
     #[test]
@@ -334,14 +424,18 @@ mod tests {
 
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
-        assert_eq!(dcel.hedges[1].twin, 5);
-        assert_eq!(dcel.hedges[5].twin, 1);
+        // Check individual twins
+        let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
+        assert_eq!(twins, vec![6, 5, 7, 9, 8, 1, 0, 2, 4, 3]);
 
-        for i in [1, 5] {
-            assert_eq!(
-                dcel.hedges[dcel.hedges[i].twin].origin,
-                dcel.hedges[dcel.hedges[i].next].origin
-            );
+        // Check that the twins' origin is the same as the next hedge's origin
+        for (i, _) in dcel.faces.iter().enumerate() {
+            for hedge in dcel.iter_face_hedges(i) {
+                assert_eq!(
+                    dcel.hedges[hedge.twin].origin,
+                    dcel.hedges[hedge.next].origin
+                );
+            }
         }
 
         // Quadrangles
@@ -349,20 +443,24 @@ mod tests {
 
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
-        assert_eq!(dcel.hedges[1].twin, 7);
-        assert_eq!(dcel.hedges[7].twin, 1);
-        assert_eq!(dcel.hedges[2].twin, 8);
-        assert_eq!(dcel.hedges[8].twin, 2);
-        assert_eq!(dcel.hedges[6].twin, 12);
-        assert_eq!(dcel.hedges[12].twin, 6);
-        assert_eq!(dcel.hedges[9].twin, 15);
-        assert_eq!(dcel.hedges[15].twin, 9);
+        // Check individual twins
+        let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
+        assert_eq!(
+            twins,
+            vec![
+                16, 7, 8, 17, 23, 22, 12, 1, 2, 15, 19, 18, 6, 21, 20, 9, 0, 3, 11, 10, 14, 13, 5,
+                4
+            ]
+        );
 
-        for i in [1, 2, 6, 7, 8, 9, 12, 15] {
-            assert_eq!(
-                dcel.hedges[dcel.hedges[i].twin].origin,
-                dcel.hedges[dcel.hedges[i].next].origin
-            );
+        // Check that the twins' origin is the same as the next hedge's origin
+        for (i, _) in dcel.faces.iter().enumerate() {
+            for hedge in dcel.iter_face_hedges(i) {
+                assert_eq!(
+                    dcel.hedges[hedge.twin].origin,
+                    dcel.hedges[hedge.next].origin
+                );
+            }
         }
     }
 }
