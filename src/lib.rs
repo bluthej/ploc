@@ -5,13 +5,13 @@ struct Dcel {
     vertices: Vec<Vertex>,
     faces: Vec<Face>,
     hedges: Vec<Hedge>,
-    contours: Vec<Face>,
+    contours: Vec<HedgeId>,
 }
 
 #[derive(Debug)]
 struct Vertex {
     coords: [f32; 2],
-    hedge: usize,
+    hedge: HedgeId,
 }
 
 impl Display for Vertex {
@@ -23,17 +23,26 @@ impl Display for Vertex {
 
 #[derive(Debug)]
 struct Face {
-    start: usize,
+    start: HedgeId,
 }
 
 #[derive(Debug)]
 struct Hedge {
-    origin: usize,
-    twin: usize,
-    face: usize,
-    next: usize,
-    prev: usize,
+    origin: VertexId,
+    twin: HedgeId,
+    face: Option<FaceId>,
+    next: HedgeId,
+    prev: HedgeId,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct VertexId(usize);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FaceId(usize);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HedgeId(usize);
 
 struct FaceVerticesIterator<'a> {
     hedge_iterator: FaceHedgesIterator<'a>,
@@ -41,30 +50,42 @@ struct FaceVerticesIterator<'a> {
 
 struct FaceHedgesIterator<'a> {
     dcel: &'a Dcel,
-    face: usize,
-    current: usize,
+    face: FaceId,
+    current: HedgeId,
     done: bool,
 }
 
 struct ContourHedgesIterator<'a> {
     dcel: &'a Dcel,
     contour: usize,
-    current: usize,
+    current: HedgeId,
     done: bool,
 }
 
 impl Dcel {
+    fn get_vertex(&self, VertexId(n): VertexId) -> &Vertex {
+        &self.vertices[n]
+    }
+
+    fn get_face(&self, FaceId(n): FaceId) -> &Face {
+        &self.faces[n]
+    }
+
+    fn get_hedge(&self, HedgeId(n): HedgeId) -> &Hedge {
+        &self.hedges[n]
+    }
+
     fn iter_face_vertices(&self, face: usize) -> FaceVerticesIterator {
         FaceVerticesIterator {
-            hedge_iterator: self.iter_face_hedges(face),
+            hedge_iterator: self.iter_face_hedges(FaceId(face)),
         }
     }
 
-    fn iter_face_hedges(&self, face: usize) -> FaceHedgesIterator {
+    fn iter_face_hedges(&self, id: FaceId) -> FaceHedgesIterator {
         FaceHedgesIterator {
             dcel: self,
-            face,
-            current: self.faces[face].start,
+            face: id,
+            current: self.get_face(id).start,
             done: false,
         }
     }
@@ -73,17 +94,17 @@ impl Dcel {
         ContourHedgesIterator {
             dcel: self,
             contour,
-            current: self.contours[contour].start,
+            current: self.contours[contour],
             done: false,
         }
     }
 
     fn print_face_hedges(&self, face: usize) {
-        for hedge in self.iter_face_hedges(face) {
+        for hedge in self.iter_face_hedges(FaceId(face)) {
             let origin = hedge.origin;
-            let dest = self.hedges[hedge.next].origin;
-            let [xo, yo] = self.vertices[origin].coords;
-            let [xd, yd] = self.vertices[dest].coords;
+            let dest = self.get_hedge(hedge.next).origin;
+            let [xo, yo] = self.get_vertex(origin).coords;
+            let [xd, yd] = self.get_vertex(dest).coords;
             println!("({}, {}) -> ({}, {})", xo, yo, xd, yd);
         }
     }
@@ -93,7 +114,7 @@ impl Dcel {
         for &coords in vertices {
             verts.push(Vertex {
                 coords,
-                hedge: usize::MAX,
+                hedge: HedgeId(usize::MAX),
             });
         }
 
@@ -103,7 +124,7 @@ impl Dcel {
         let mut edges = HashMap::with_capacity(polygons.len() * N);
         for (face, polygon) in polygons.iter().enumerate() {
             faces.push(Face {
-                start: current_hedge_id,
+                start: HedgeId(current_hedge_id),
             });
 
             for (iloc, &vert) in polygon.iter().enumerate() {
@@ -113,6 +134,8 @@ impl Dcel {
                     ivert if ivert == N - 1 => (current_hedge_id - 1, current_hedge_id + 1 - N),
                     _ => (current_hedge_id - 1, current_hedge_id + 1),
                 };
+                let prev = HedgeId(prev);
+                let next = HedgeId(next);
 
                 // Determine indices of edge vertices
                 let dest = if iloc == polygon.len() - 1 {
@@ -120,11 +143,11 @@ impl Dcel {
                 } else {
                     polygon[iloc + 1]
                 };
-                let twin = if let Some(twin) = edges.remove(&(dest, vert)) {
+                let twin = HedgeId(if let Some(twin) = edges.remove(&(dest, vert)) {
                     // We have already seen the current half-edge's twin, and we know the current
                     // half-edge is its twin!
                     let hedge: &mut Hedge = &mut hedges[twin];
-                    hedge.twin = current_hedge_id;
+                    hedge.twin = HedgeId(current_hedge_id);
                     // NOTE: We have to do this little dance for some reason, this will not compile:
                     // hedges[twin].twin = current_hedge_id;
                     twin
@@ -132,16 +155,16 @@ impl Dcel {
                     // Store half-edge id to set the twin id later on
                     edges.insert((vert, dest), current_hedge_id);
                     usize::MAX
-                };
+                });
 
                 hedges.push(Hedge {
-                    origin: vert,
+                    origin: VertexId(vert),
                     twin,
-                    face,
+                    face: Some(FaceId(face)),
                     next,
                     prev,
                 });
-                verts[vert].hedge = current_hedge_id;
+                verts[vert].hedge = HedgeId(current_hedge_id);
                 current_hedge_id += 1;
             }
         }
@@ -150,37 +173,35 @@ impl Dcel {
         // TODO: only works for one boundary, make it work when there are holes as well
         let mut contours = Vec::new();
         let first_outer_hedge_id = current_hedge_id;
-        contours.push(Face {
-            start: first_outer_hedge_id,
-        });
+        contours.push(HedgeId(first_outer_hedge_id));
         let start_id = *edges.values().min().unwrap();
-        let mut inner_hedge_id = start_id;
+        let mut inner_hedge_id = HedgeId(start_id);
         'outer: loop {
             // These are wrong for the first and last half-edge of the contour, but this is fixed
             // when exiting the loop
-            let next = current_hedge_id + 1;
-            let prev = current_hedge_id - 1;
+            let next = HedgeId(current_hedge_id + 1);
+            let prev = HedgeId(current_hedge_id - 1);
             hedges.push(Hedge {
-                origin: hedges[hedges[inner_hedge_id].next].origin,
+                origin: hedges[hedges[inner_hedge_id.0].next.0].origin,
                 twin: inner_hedge_id,
-                face: usize::MAX,
+                face: None,
                 next,
                 prev,
             });
-            hedges[inner_hedge_id].twin = current_hedge_id;
+            hedges[inner_hedge_id.0].twin = HedgeId(current_hedge_id);
             current_hedge_id += 1;
             loop {
                 // Iterate over the current origin's `umbrella` to find the next hedge
-                inner_hedge_id = hedges[inner_hedge_id].prev;
-                if inner_hedge_id == start_id {
+                inner_hedge_id = HedgeId(hedges[inner_hedge_id.0].prev.0);
+                if inner_hedge_id == HedgeId(start_id) {
                     // Means we are back at the start, time to fix the first and last half-edge
                     let last_outer_hedge_id = current_hedge_id - 1;
-                    hedges[first_outer_hedge_id].prev = last_outer_hedge_id;
-                    hedges[last_outer_hedge_id].next = first_outer_hedge_id;
+                    hedges[first_outer_hedge_id].prev = HedgeId(last_outer_hedge_id);
+                    hedges[last_outer_hedge_id].next = HedgeId(first_outer_hedge_id);
                     break 'outer;
                 }
-                if hedges[inner_hedge_id].twin < usize::MAX {
-                    inner_hedge_id = hedges[inner_hedge_id].twin;
+                if hedges[inner_hedge_id.0].twin.0 < usize::MAX {
+                    inner_hedge_id = hedges[inner_hedge_id.0].twin;
                 } else {
                     break;
                 }
@@ -201,8 +222,8 @@ impl Dcel {
             .collect()
     }
 
-    fn get_face_vertex_ids(&self, face: usize) -> Vec<usize> {
-        self.iter_face_hedges(face)
+    fn get_face_vertex_ids(&self, face: usize) -> Vec<VertexId> {
+        self.iter_face_hedges(FaceId(face))
             .map(|hedge| hedge.origin)
             .collect()
     }
@@ -214,7 +235,7 @@ impl<'a> Iterator for FaceVerticesIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.hedge_iterator
             .next()
-            .map(|hedge| &self.hedge_iterator.dcel.vertices[hedge.origin])
+            .map(|hedge| self.hedge_iterator.dcel.get_vertex(hedge.origin))
     }
 }
 
@@ -225,9 +246,9 @@ impl<'a> Iterator for FaceHedgesIterator<'a> {
         if self.done {
             return None;
         }
-        let hedge = &self.dcel.hedges[self.current];
+        let hedge = &self.dcel.get_hedge(self.current);
         self.current = hedge.next;
-        let start = self.dcel.faces[self.face].start;
+        let start = self.dcel.get_face(self.face).start;
         if self.current == start {
             self.done = true;
         }
@@ -242,9 +263,9 @@ impl<'a> Iterator for ContourHedgesIterator<'a> {
         if self.done {
             return None;
         }
-        let hedge = &self.dcel.hedges[self.current];
+        let hedge = self.dcel.get_hedge(self.current);
         self.current = hedge.next;
-        let start = self.dcel.contours[self.contour].start;
+        let start = self.dcel.contours[self.contour];
         if self.current == start {
             self.done = true;
         }
@@ -315,7 +336,8 @@ mod tests {
         let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
 
         let vertex_ids = dcel.get_face_vertex_ids(0);
-        assert_eq!(vertex_ids, polygons[0]);
+        let expected_vertex_ids = polygons[0].into_iter().map(VertexId).collect::<Vec<_>>();
+        assert_eq!(vertex_ids, expected_vertex_ids);
         let verts = dcel.get_face_coords(0);
         assert_eq!(verts, vertices);
     }
@@ -329,7 +351,8 @@ mod tests {
         // Check vertex ids
         for face in [0, 1] {
             let vertex_ids = dcel.get_face_vertex_ids(face);
-            assert_eq!(vertex_ids, polygons[face]);
+            let expected_vertex_ids = polygons[face].into_iter().map(VertexId).collect::<Vec<_>>();
+            assert_eq!(vertex_ids, expected_vertex_ids);
         }
 
         // Check vertex coordinates
@@ -340,27 +363,44 @@ mod tests {
 
         // Check face ids
         for face in [0, 1] {
-            for hedge in dcel.iter_face_hedges(face) {
-                assert_eq!(hedge.face, face);
+            for hedge in dcel.iter_face_hedges(FaceId(face)) {
+                assert_eq!(hedge.face, Some(FaceId(face)));
             }
         }
 
         // Check next and prev
-        let nexts: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![1, 2, 0]);
-        let prevs: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.prev).collect();
-        assert_eq!(prevs, vec![2, 0, 1]);
-        let nexts: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![4, 5, 3]);
-        let prevs: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.prev).collect();
-        assert_eq!(prevs, vec![5, 3, 4]);
+        let nexts: Vec<_> = dcel
+            .iter_face_hedges(FaceId(0))
+            .map(|hedge| hedge.next)
+            .collect();
+        let expected_nexts: Vec<_> = [1, 2, 0].into_iter().map(HedgeId).collect();
+        assert_eq!(nexts, expected_nexts);
+        let prevs: Vec<_> = dcel
+            .iter_face_hedges(FaceId(0))
+            .map(|hedge| hedge.prev)
+            .collect();
+        let expected_prevs: Vec<_> = [2, 0, 1].into_iter().map(HedgeId).collect();
+        assert_eq!(prevs, expected_prevs);
+        let nexts: Vec<_> = dcel
+            .iter_face_hedges(FaceId(1))
+            .map(|hedge| hedge.next)
+            .collect();
+        let expected_nexts: Vec<_> = [4, 5, 3].into_iter().map(HedgeId).collect();
+        assert_eq!(nexts, expected_nexts);
+        let prevs: Vec<_> = dcel
+            .iter_face_hedges(FaceId(1))
+            .map(|hedge| hedge.prev)
+            .collect();
+        let expected_prevs: Vec<_> = [5, 3, 4].into_iter().map(HedgeId).collect();
+        assert_eq!(prevs, expected_prevs);
 
         // Check contour
         let origins: Vec<_> = dcel
             .iter_contour_hedges(0)
             .map(|hedge| hedge.origin)
             .collect();
-        assert_eq!(origins, vec![1, 0, 3, 2]);
+        let expected_origins: Vec<_> = [1, 0, 3, 2].into_iter().map(VertexId).collect();
+        assert_eq!(origins, expected_origins);
     }
 
     #[test]
@@ -372,7 +412,8 @@ mod tests {
         // Check vertex ids
         for face in [0, 1] {
             let vertex_ids = dcel.get_face_vertex_ids(face);
-            assert_eq!(vertex_ids, polygons[face]);
+            let expected_vertex_ids: Vec<_> = polygons[face].into_iter().map(VertexId).collect();
+            assert_eq!(vertex_ids, expected_vertex_ids);
         }
 
         // Check vertex coordinates
@@ -383,38 +424,71 @@ mod tests {
 
         // Check face ids
         for face in [0, 1] {
-            for hedge in dcel.iter_face_hedges(face) {
-                assert_eq!(hedge.face, face);
+            for hedge in dcel.iter_face_hedges(FaceId(face)) {
+                assert_eq!(hedge.face, Some(FaceId(face)));
             }
         }
 
         // Check next and prev
-        let nexts: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![1, 2, 3, 0]);
-        let prevs: Vec<_> = dcel.iter_face_hedges(0).map(|hedge| hedge.prev).collect();
-        assert_eq!(prevs, vec![3, 0, 1, 2]);
+        let nexts: Vec<_> = dcel
+            .iter_face_hedges(FaceId(0))
+            .map(|hedge| hedge.next)
+            .collect();
+        let expected_nexts: Vec<_> = [1, 2, 3, 0].into_iter().map(HedgeId).collect();
+        assert_eq!(nexts, expected_nexts);
+        let prevs: Vec<_> = dcel
+            .iter_face_hedges(FaceId(0))
+            .map(|hedge| hedge.prev)
+            .collect();
+        let expected_prevs: Vec<_> = [3, 0, 1, 2].into_iter().map(HedgeId).collect();
+        assert_eq!(prevs, expected_prevs);
 
-        let nexts: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![5, 6, 7, 4]);
-        let prevs: Vec<_> = dcel.iter_face_hedges(1).map(|hedge| hedge.prev).collect();
-        assert_eq!(prevs, vec![7, 4, 5, 6]);
+        let nexts: Vec<_> = dcel
+            .iter_face_hedges(FaceId(1))
+            .map(|hedge| hedge.next)
+            .collect();
+        let expected_nexts: Vec<_> = [5, 6, 7, 4].into_iter().map(HedgeId).collect();
+        assert_eq!(nexts, expected_nexts);
+        let prevs: Vec<_> = dcel
+            .iter_face_hedges(FaceId(1))
+            .map(|hedge| hedge.prev)
+            .collect();
+        let expected_prevs: Vec<_> = [7, 4, 5, 6].into_iter().map(HedgeId).collect();
+        assert_eq!(prevs, expected_prevs);
 
-        let nexts: Vec<_> = dcel.iter_face_hedges(2).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![9, 10, 11, 8]);
-        let prevs: Vec<_> = dcel.iter_face_hedges(2).map(|hedge| hedge.prev).collect();
-        assert_eq!(prevs, vec![11, 8, 9, 10]);
+        let nexts: Vec<_> = dcel
+            .iter_face_hedges(FaceId(2))
+            .map(|hedge| hedge.next)
+            .collect();
+        let expected_nexts: Vec<_> = [9, 10, 11, 8].into_iter().map(HedgeId).collect();
+        assert_eq!(nexts, expected_nexts);
+        let prevs: Vec<_> = dcel
+            .iter_face_hedges(FaceId(2))
+            .map(|hedge| hedge.prev)
+            .collect();
+        let expected_prevs: Vec<_> = [11, 8, 9, 10].into_iter().map(HedgeId).collect();
+        assert_eq!(prevs, expected_prevs);
 
-        let nexts: Vec<_> = dcel.iter_face_hedges(3).map(|hedge| hedge.next).collect();
-        assert_eq!(nexts, vec![13, 14, 15, 12]);
-        let prevs: Vec<_> = dcel.iter_face_hedges(3).map(|hedge| hedge.prev).collect();
-        assert_eq!(prevs, vec![15, 12, 13, 14]);
+        let nexts: Vec<_> = dcel
+            .iter_face_hedges(FaceId(3))
+            .map(|hedge| hedge.next)
+            .collect();
+        let expected_nexts: Vec<_> = [13, 14, 15, 12].into_iter().map(HedgeId).collect();
+        assert_eq!(nexts, expected_nexts);
+        let prevs: Vec<_> = dcel
+            .iter_face_hedges(FaceId(3))
+            .map(|hedge| hedge.prev)
+            .collect();
+        let expected_prevs: Vec<_> = [15, 12, 13, 14].into_iter().map(HedgeId).collect();
+        assert_eq!(prevs, expected_prevs);
 
         // Check contour
         let origins: Vec<_> = dcel
             .iter_contour_hedges(0)
             .map(|hedge| hedge.origin)
             .collect();
-        assert_eq!(origins, vec![1, 0, 3, 6, 7, 8, 5, 2]);
+        let expected_origins: Vec<_> = [1, 0, 3, 6, 7, 8, 5, 2].into_iter().map(VertexId).collect();
+        assert_eq!(origins, expected_origins);
     }
 
     #[test]
@@ -426,14 +500,18 @@ mod tests {
 
         // Check individual twins
         let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
-        assert_eq!(twins, vec![6, 5, 7, 9, 8, 1, 0, 2, 4, 3]);
+        let expected_twins: Vec<_> = [6, 5, 7, 9, 8, 1, 0, 2, 4, 3]
+            .into_iter()
+            .map(HedgeId)
+            .collect();
+        assert_eq!(twins, expected_twins);
 
         // Check that the twins' origin is the same as the next hedge's origin
         for (i, _) in dcel.faces.iter().enumerate() {
-            for hedge in dcel.iter_face_hedges(i) {
+            for hedge in dcel.iter_face_hedges(FaceId(i)) {
                 assert_eq!(
-                    dcel.hedges[hedge.twin].origin,
-                    dcel.hedges[hedge.next].origin
+                    dcel.get_hedge(hedge.twin).origin,
+                    dcel.get_hedge(hedge.next).origin
                 );
             }
         }
@@ -445,20 +523,20 @@ mod tests {
 
         // Check individual twins
         let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
-        assert_eq!(
-            twins,
-            vec![
-                16, 7, 8, 17, 23, 22, 12, 1, 2, 15, 19, 18, 6, 21, 20, 9, 0, 3, 11, 10, 14, 13, 5,
-                4
-            ]
-        );
+        let expected_twins: Vec<_> = [
+            16, 7, 8, 17, 23, 22, 12, 1, 2, 15, 19, 18, 6, 21, 20, 9, 0, 3, 11, 10, 14, 13, 5, 4,
+        ]
+        .into_iter()
+        .map(HedgeId)
+        .collect();
+        assert_eq!(twins, expected_twins);
 
         // Check that the twins' origin is the same as the next hedge's origin
         for (i, _) in dcel.faces.iter().enumerate() {
-            for hedge in dcel.iter_face_hedges(i) {
+            for hedge in dcel.iter_face_hedges(FaceId(i)) {
                 assert_eq!(
-                    dcel.hedges[hedge.twin].origin,
-                    dcel.hedges[hedge.next].origin
+                    dcel.get_hedge(hedge.twin).origin,
+                    dcel.get_hedge(hedge.next).origin
                 );
             }
         }
