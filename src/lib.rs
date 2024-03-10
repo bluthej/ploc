@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
 
 #[derive(Debug)]
 struct Dcel {
@@ -44,6 +48,34 @@ struct FaceId(usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct HedgeId(usize);
 
+impl Add<usize> for HedgeId {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl AddAssign<usize> for HedgeId {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+
+impl Sub<usize> for HedgeId {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self(self.0 - rhs)
+    }
+}
+
+impl SubAssign<usize> for HedgeId {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.0 -= rhs;
+    }
+}
+
 struct FaceVerticesIterator<'a> {
     hedge_iterator: FaceHedgesIterator<'a>,
 }
@@ -63,8 +95,30 @@ struct ContourHedgesIterator<'a> {
 }
 
 impl Dcel {
+    fn new() -> Self {
+        Self {
+            vertices: Vec::new(),
+            faces: Vec::new(),
+            hedges: Vec::new(),
+            contours: Vec::new(),
+        }
+    }
+
+    fn with_capacity(n_vertices: usize, n_faces: usize, n_sides: usize) -> Self {
+        Self {
+            vertices: Vec::with_capacity(n_vertices),
+            faces: Vec::with_capacity(n_faces),
+            hedges: Vec::with_capacity(n_faces * n_sides),
+            contours: Vec::new(),
+        }
+    }
+
     fn get_vertex(&self, VertexId(n): VertexId) -> &Vertex {
         &self.vertices[n]
+    }
+
+    fn get_vertex_mut(&mut self, VertexId(n): VertexId) -> &mut Vertex {
+        &mut self.vertices[n]
     }
 
     fn get_face(&self, FaceId(n): FaceId) -> &Face {
@@ -73,6 +127,10 @@ impl Dcel {
 
     fn get_hedge(&self, HedgeId(n): HedgeId) -> &Hedge {
         &self.hedges[n]
+    }
+
+    fn get_hedge_mut(&mut self, HedgeId(n): HedgeId) -> &mut Hedge {
+        &mut self.hedges[n]
     }
 
     fn iter_face_vertices(&self, face: usize) -> FaceVerticesIterator {
@@ -109,22 +167,36 @@ impl Dcel {
         }
     }
 
-    fn from_polygon_soup<const N: usize>(vertices: &[[f32; 2]], polygons: &[[usize; N]]) -> Self {
-        let mut verts = Vec::with_capacity(vertices.len());
+    fn add_vertices(&mut self, vertices: &[[f32; 2]]) {
         for &coords in vertices {
-            verts.push(Vertex {
+            self.vertices.push(Vertex {
                 coords,
                 hedge: HedgeId(usize::MAX),
             });
         }
+    }
 
-        let mut faces = Vec::with_capacity(polygons.len());
-        let mut hedges: Vec<Hedge> = Vec::new();
-        let mut current_hedge_id = 0;
+    fn add_hedge(&mut self, hedge: Hedge) -> HedgeId {
+        let id = self.hedges.len();
+        self.hedges.push(hedge);
+        HedgeId(id)
+    }
+
+    fn add_face(&mut self, face: Face) -> FaceId {
+        let id = self.faces.len();
+        self.faces.push(face);
+        FaceId(id)
+    }
+
+    fn from_polygon_soup<const N: usize>(vertices: &[[f32; 2]], polygons: &[[usize; N]]) -> Self {
+        let mut dcel = Self::with_capacity(vertices.len(), polygons.len(), N);
+        dcel.add_vertices(vertices);
+
+        let mut current_hedge_id = HedgeId(0);
         let mut edges = HashMap::with_capacity(polygons.len() * N);
         for (face, polygon) in polygons.iter().enumerate() {
-            faces.push(Face {
-                start: HedgeId(current_hedge_id),
+            dcel.add_face(Face {
+                start: current_hedge_id,
             });
 
             for (iloc, &vert) in polygon.iter().enumerate() {
@@ -134,8 +206,6 @@ impl Dcel {
                     ivert if ivert == N - 1 => (current_hedge_id - 1, current_hedge_id + 1 - N),
                     _ => (current_hedge_id - 1, current_hedge_id + 1),
                 };
-                let prev = HedgeId(prev);
-                let next = HedgeId(next);
 
                 // Determine indices of edge vertices
                 let dest = if iloc == polygon.len() - 1 {
@@ -143,77 +213,68 @@ impl Dcel {
                 } else {
                     polygon[iloc + 1]
                 };
-                let twin = HedgeId(if let Some(twin) = edges.remove(&(dest, vert)) {
+                let twin = if let Some(twin) = edges.remove(&(dest, vert)) {
                     // We have already seen the current half-edge's twin, and we know the current
                     // half-edge is its twin!
-                    let hedge: &mut Hedge = &mut hedges[twin];
-                    hedge.twin = HedgeId(current_hedge_id);
-                    // NOTE: We have to do this little dance for some reason, this will not compile:
-                    // hedges[twin].twin = current_hedge_id;
+                    dcel.get_hedge_mut(twin).twin = current_hedge_id;
                     twin
                 } else {
                     // Store half-edge id to set the twin id later on
                     edges.insert((vert, dest), current_hedge_id);
-                    usize::MAX
-                });
+                    HedgeId(usize::MAX)
+                };
 
-                hedges.push(Hedge {
+                dcel.add_hedge(Hedge {
                     origin: VertexId(vert),
                     twin,
                     face: Some(FaceId(face)),
                     next,
                     prev,
                 });
-                verts[vert].hedge = HedgeId(current_hedge_id);
+                dcel.get_vertex_mut(VertexId(vert)).hedge = current_hedge_id;
                 current_hedge_id += 1;
             }
         }
 
         // Find boundary half-edges
         // TODO: only works for one boundary, make it work when there are holes as well
-        let mut contours = Vec::new();
         let first_outer_hedge_id = current_hedge_id;
-        contours.push(HedgeId(first_outer_hedge_id));
-        let start_id = *edges.values().min().unwrap();
-        let mut inner_hedge_id = HedgeId(start_id);
+        dcel.contours.push(first_outer_hedge_id);
+        let start_id = HedgeId(edges.values().map(|hedge_id| hedge_id.0).min().unwrap());
+        let mut inner_hedge_id = start_id;
         'outer: loop {
             // These are wrong for the first and last half-edge of the contour, but this is fixed
             // when exiting the loop
-            let next = HedgeId(current_hedge_id + 1);
-            let prev = HedgeId(current_hedge_id - 1);
-            hedges.push(Hedge {
-                origin: hedges[hedges[inner_hedge_id.0].next.0].origin,
+            let next = current_hedge_id + 1;
+            let prev = current_hedge_id - 1;
+            dcel.add_hedge(Hedge {
+                origin: dcel.get_hedge(dcel.get_hedge(inner_hedge_id).next).origin,
                 twin: inner_hedge_id,
                 face: None,
                 next,
                 prev,
             });
-            hedges[inner_hedge_id.0].twin = HedgeId(current_hedge_id);
+            dcel.get_hedge_mut(inner_hedge_id).twin = current_hedge_id;
             current_hedge_id += 1;
             loop {
                 // Iterate over the current origin's `umbrella` to find the next hedge
-                inner_hedge_id = HedgeId(hedges[inner_hedge_id.0].prev.0);
-                if inner_hedge_id == HedgeId(start_id) {
+                inner_hedge_id = dcel.get_hedge(inner_hedge_id).prev;
+                if inner_hedge_id == start_id {
                     // Means we are back at the start, time to fix the first and last half-edge
                     let last_outer_hedge_id = current_hedge_id - 1;
-                    hedges[first_outer_hedge_id].prev = HedgeId(last_outer_hedge_id);
-                    hedges[last_outer_hedge_id].next = HedgeId(first_outer_hedge_id);
+                    dcel.get_hedge_mut(first_outer_hedge_id).prev = last_outer_hedge_id;
+                    dcel.get_hedge_mut(last_outer_hedge_id).next = first_outer_hedge_id;
                     break 'outer;
                 }
-                if hedges[inner_hedge_id.0].twin.0 < usize::MAX {
-                    inner_hedge_id = hedges[inner_hedge_id.0].twin;
+                if dcel.get_hedge(inner_hedge_id).twin.0 < usize::MAX {
+                    inner_hedge_id = dcel.get_hedge(inner_hedge_id).twin;
                 } else {
                     break;
                 }
             }
         }
 
-        Self {
-            vertices: verts,
-            faces,
-            hedges,
-            contours,
-        }
+        dcel
     }
 
     fn get_face_coords(&self, face: usize) -> Vec<[f32; 2]> {
