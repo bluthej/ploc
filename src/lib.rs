@@ -2,6 +2,7 @@
 
 mod dcel;
 
+use anyhow::{anyhow, Result};
 use dcel::{Dcel, FaceId, Hedge, HedgeId};
 use indextree::Arena;
 
@@ -93,12 +94,12 @@ impl TrapMap {
         self.tree.count()
     }
 
-    fn find_face(&self, point: &[f64; 2]) -> Option<FaceId> {
+    fn find_face(&self, point: &[f32; 2]) -> Option<FaceId> {
         let trap = self.find_trapezoid(point);
         self.dcel.get_hedge(trap.bottom).face
     }
 
-    fn find_trapezoid(&self, _point: &[f64; 2]) -> &Trapezoid {
+    fn find_trapezoid(&self, _point: &[f32; 2]) -> &Trapezoid {
         match self
             .tree
             .get(self.root)
@@ -108,6 +109,24 @@ impl TrapMap {
             Node::Trap(trapezoid) => trapezoid,
             _ => unreachable!("For the root node is necessarily a trapezoid"),
         }
+    }
+
+    fn add_edge(&mut self, hedge_id: HedgeId) -> Result<()> {
+        let hedge = self.dcel.get_hedge(hedge_id);
+        let twin = self.dcel.get_hedge(hedge.twin);
+
+        let pid = hedge.origin;
+        let p = self.dcel.get_vertex(pid);
+        let qid = twin.origin;
+        let q = self.dcel.get_vertex(qid);
+
+        if !q.is_right_of(p) {
+            return Err(anyhow!("Only edges pointing to the right should be added."));
+        }
+
+        let _trap = self.find_trapezoid(&p.coords);
+
+        Ok(())
     }
 }
 
@@ -152,5 +171,23 @@ mod tests {
         assert!(bbox.xmax > 1.);
         assert!(bbox.ymin < 0.);
         assert!(bbox.ymax > 1.);
+    }
+
+    #[test]
+    fn only_add_edges_pointing_to_the_right() -> Result<()> {
+        let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let polygons = vec![[0, 1, 2]];
+        let mut trap_map = TrapMap::from_polygon_soup(&vertices, &polygons);
+
+        // Edges 1, 2 and 3 point to the left
+        assert!(trap_map.add_edge(HedgeId(1)).is_err());
+        assert!(trap_map.add_edge(HedgeId(2)).is_err());
+        assert!(trap_map.add_edge(HedgeId(3)).is_err());
+        // Edges 0, 4 and 5 point to the right
+        trap_map.add_edge(HedgeId(0))?;
+        trap_map.add_edge(HedgeId(4))?;
+        trap_map.add_edge(HedgeId(5))?;
+
+        Ok(())
     }
 }

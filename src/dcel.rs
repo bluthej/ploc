@@ -16,8 +16,20 @@ pub(crate) struct Dcel {
 
 #[derive(Debug)]
 pub(crate) struct Vertex {
-    coords: [f32; 2],
+    pub(crate) coords: [f32; 2],
     hedge: HedgeId,
+}
+
+impl Vertex {
+    pub fn is_right_of(&self, other: &Self) -> bool {
+        let [x0, y0] = other.coords;
+        let [x1, y1] = self.coords;
+        if x1 == x0 {
+            y1 > y0
+        } else {
+            x1 > x0
+        }
+    }
 }
 
 impl Display for Vertex {
@@ -34,8 +46,8 @@ pub(crate) struct Face {
 
 #[derive(Debug, Default)]
 pub(crate) struct Hedge {
-    origin: VertexId,
-    twin: HedgeId,
+    pub(crate) origin: VertexId,
+    pub(crate) twin: HedgeId,
     pub(crate) face: Option<FaceId>,
     next: HedgeId,
     prev: HedgeId,
@@ -54,7 +66,7 @@ pub(crate) struct VertexId(usize);
 pub(crate) struct FaceId(usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) struct HedgeId(usize);
+pub(crate) struct HedgeId(pub(crate) usize);
 
 impl Add<usize> for HedgeId {
     type Output = Self;
@@ -142,7 +154,7 @@ impl Dcel {
         [xmin, xmax, ymin, ymax]
     }
 
-    fn get_vertex(&self, VertexId(n): VertexId) -> &Vertex {
+    pub(crate) fn get_vertex(&self, VertexId(n): VertexId) -> &Vertex {
         &self.vertices[n]
     }
 
