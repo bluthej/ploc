@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod dcel;
 
 use dcel::{Dcel, FaceId, Hedge, HedgeId};
