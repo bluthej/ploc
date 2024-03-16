@@ -34,13 +34,13 @@ pub(crate) struct Face {
 pub(crate) struct Hedge {
     origin: VertexId,
     twin: HedgeId,
-    pub face: Option<FaceId>,
+    pub(crate) face: Option<FaceId>,
     next: HedgeId,
     prev: HedgeId,
 }
 
 impl Hedge {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 }
@@ -152,7 +152,7 @@ impl Dcel {
         &self.faces[n]
     }
 
-    pub fn get_hedge(&self, HedgeId(n): HedgeId) -> &Hedge {
+    pub(crate) fn get_hedge(&self, HedgeId(n): HedgeId) -> &Hedge {
         &self.hedges[n]
     }
 
@@ -203,7 +203,7 @@ impl Dcel {
         }
     }
 
-    pub fn add_hedge(&mut self, hedge: Hedge) -> HedgeId {
+    pub(crate) fn add_hedge(&mut self, hedge: Hedge) -> HedgeId {
         let id = self.hedges.len();
         self.hedges.push(hedge);
         HedgeId(id)
@@ -215,7 +215,7 @@ impl Dcel {
         FaceId(id)
     }
 
-    pub fn from_polygon_soup<const N: usize>(
+    pub(crate) fn from_polygon_soup<const N: usize>(
         vertices: &[[f32; 2]],
         polygons: &[[usize; N]],
     ) -> Self {
