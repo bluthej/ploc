@@ -7,6 +7,7 @@ struct TrapMap {
     dcel: Dcel,
     tree: Arena<Node>,
     root: indextree::NodeId,
+    bbox: BoundingBox,
 }
 
 // TODO: add the necessary data
@@ -20,6 +21,39 @@ enum Node {
 struct Trapezoid {
     top: HedgeId,
     bottom: HedgeId,
+}
+
+struct BoundingBox {
+    xmin: f32,
+    xmax: f32,
+    ymin: f32,
+    ymax: f32,
+}
+
+impl BoundingBox {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn from_bounds(xmin: f32, xmax: f32, ymin: f32, ymax: f32) -> Self {
+        Self {
+            xmin: xmin - 0.1,
+            xmax: xmax + 0.1,
+            ymin: ymin - 0.1,
+            ymax: ymax + 0.1,
+        }
+    }
+}
+
+impl Default for BoundingBox {
+    fn default() -> Self {
+        Self {
+            xmin: 0.,
+            xmax: 1.,
+            ymin: 0.,
+            ymax: 1.,
+        }
+    }
 }
 
 impl TrapMap {
@@ -37,12 +71,20 @@ impl TrapMap {
         let mut tree = Arena::new();
 
         let mut dcel = dcel;
-        let top = dcel.add_hedge(Hedge::default());
-        let bottom = dcel.add_hedge(Hedge::default());
+        let top = dcel.add_hedge(Hedge::new());
+        let bottom = dcel.add_hedge(Hedge::new());
 
         let root = tree.new_node(Node::Trap(Trapezoid { top, bottom }));
 
-        Self { dcel, tree, root }
+        let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
+        let bbox = BoundingBox::from_bounds(xmin, xmax, ymin, ymax);
+
+        Self {
+            dcel,
+            tree,
+            root,
+            bbox,
+        }
     }
 
     fn count_traps(&self) -> usize {
@@ -91,5 +133,19 @@ mod tests {
         let point = [0., 0.];
 
         assert_eq!(trap_map.find_face(&point), None);
+    }
+
+    #[test]
+    fn bounding_box() {
+        let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        let polygons = vec![[0, 1, 2, 3]];
+        let trap_map = TrapMap::from_polygon_soup(&vertices, &polygons);
+
+        let bbox = trap_map.bbox;
+
+        assert!(bbox.xmin < 0.);
+        assert!(bbox.xmax > 1.);
+        assert!(bbox.ymin < 0.);
+        assert!(bbox.ymax > 1.);
     }
 }

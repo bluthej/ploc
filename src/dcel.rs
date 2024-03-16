@@ -39,6 +39,12 @@ pub(crate) struct Hedge {
     prev: HedgeId,
 }
 
+impl Hedge {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct VertexId(usize);
 
@@ -111,6 +117,27 @@ impl Dcel {
             hedges: Vec::with_capacity(n_faces * n_sides),
             contours: Vec::new(),
         }
+    }
+
+    pub(crate) fn get_bounds(&self) -> [f32; 4] {
+        let mut xmin = f32::MAX;
+        let mut xmax = f32::MIN;
+        let mut ymin = f32::MAX;
+        let mut ymax = f32::MIN;
+        for vertex in &self.vertices {
+            let [x, y] = vertex.coords;
+            if x < xmin {
+                xmin = x;
+            } else if x > xmax {
+                xmax = x;
+            }
+            if y < ymin {
+                ymin = y;
+            } else if y > ymax {
+                ymax = y;
+            }
+        }
+        [xmin, xmax, ymin, ymax]
     }
 
     fn get_vertex(&self, VertexId(n): VertexId) -> &Vertex {
@@ -604,5 +631,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn bounds() {
+        let (vertices, polygons) = two_triangles();
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+
+        let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
+
+        assert_eq!(xmin, 0.);
+        assert_eq!(xmax, 1.);
+        assert_eq!(ymin, 0.);
+        assert_eq!(ymax, 1.);
     }
 }
