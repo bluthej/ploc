@@ -94,15 +94,20 @@ impl TrapMap {
     }
 
     fn find_face(&self, point: &[f64; 2]) -> Option<FaceId> {
-        self.find_trapezoid(point)
-            .and_then(|trap| self.dcel.get_hedge(trap.bottom).face)
+        let trap = self.find_trapezoid(point);
+        self.dcel.get_hedge(trap.bottom).face
     }
 
-    fn find_trapezoid(&self, _point: &[f64; 2]) -> Option<&Trapezoid> {
-        self.tree.get(self.root).and_then(|node| match node.get() {
-            Node::Trap(trapezoid) => Some(trapezoid),
-            _ => None,
-        })
+    fn find_trapezoid(&self, _point: &[f64; 2]) -> &Trapezoid {
+        match self
+            .tree
+            .get(self.root)
+            .expect("There should always be a root")
+            .get()
+        {
+            Node::Trap(trapezoid) => trapezoid,
+            _ => unreachable!("For the root node is necessarily a trapezoid"),
+        }
     }
 }
 
@@ -123,9 +128,7 @@ mod tests {
         assert_eq!(trap_map.count_traps(), 1);
 
         let point = [0., 0.];
-        let trap = trap_map.find_trapezoid(&point);
-
-        assert!(trap.is_some());
+        let _trap = trap_map.find_trapezoid(&point);
     }
 
     #[test]
