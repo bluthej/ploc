@@ -30,22 +30,22 @@ pub(crate) struct Face {
     start: HedgeId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Hedge {
     origin: VertexId,
     twin: HedgeId,
-    face: Option<FaceId>,
+    pub face: Option<FaceId>,
     next: HedgeId,
     prev: HedgeId,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct VertexId(usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct FaceId(usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct HedgeId(usize);
 
 impl Add<usize> for HedgeId {
