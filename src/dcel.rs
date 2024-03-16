@@ -125,7 +125,7 @@ impl Dcel {
         &self.faces[n]
     }
 
-    fn get_hedge(&self, HedgeId(n): HedgeId) -> &Hedge {
+    pub fn get_hedge(&self, HedgeId(n): HedgeId) -> &Hedge {
         &self.hedges[n]
     }
 
@@ -176,7 +176,7 @@ impl Dcel {
         }
     }
 
-    fn add_hedge(&mut self, hedge: Hedge) -> HedgeId {
+    pub fn add_hedge(&mut self, hedge: Hedge) -> HedgeId {
         let id = self.hedges.len();
         self.hedges.push(hedge);
         HedgeId(id)
@@ -188,7 +188,10 @@ impl Dcel {
         FaceId(id)
     }
 
-    fn from_polygon_soup<const N: usize>(vertices: &[[f32; 2]], polygons: &[[usize; N]]) -> Self {
+    pub fn from_polygon_soup<const N: usize>(
+        vertices: &[[f32; 2]],
+        polygons: &[[usize; N]],
+    ) -> Self {
         let mut dcel = Self::with_capacity(vertices.len(), polygons.len(), N);
         dcel.add_vertices(vertices);
 
