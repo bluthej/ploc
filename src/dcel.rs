@@ -20,9 +20,19 @@ pub(crate) struct Vertex {
     hedge: HedgeId,
 }
 
-impl Vertex {
-    pub fn is_right_of(&self, other: &Self) -> bool {
-        self.coords > other.coords
+trait IsRightOf<Rhs = Self> {
+    fn is_right_of(&self, other: &Rhs) -> bool;
+}
+
+impl IsRightOf<Vertex> for [f32; 2] {
+    fn is_right_of(&self, other: &Vertex) -> bool {
+        self > &other.coords
+    }
+}
+
+impl IsRightOf for Vertex {
+    fn is_right_of(&self, other: &Self) -> bool {
+        self.coords.is_right_of(other)
     }
 }
 
@@ -671,32 +681,12 @@ mod tests {
             coords: [0., 0.],
             hedge: HedgeId(0),
         };
-        let v1 = Vertex {
-            coords: [1., 0.],
-            hedge: HedgeId(0),
-        };
-        let v2 = Vertex {
-            coords: [-1., 0.],
-            hedge: HedgeId(0),
-        };
-        let v3 = Vertex {
-            coords: [0., 1.],
-            hedge: HedgeId(0),
-        };
-        let v4 = Vertex {
-            coords: [0., -1.],
-            hedge: HedgeId(0),
-        };
-        let v5 = Vertex {
-            coords: [0., 0.],
-            hedge: HedgeId(0),
-        };
 
-        assert!(v1.is_right_of(&v0));
-        assert!(!v2.is_right_of(&v0));
-        assert!(v3.is_right_of(&v0));
-        assert!(!v4.is_right_of(&v0));
-        assert!(!v5.is_right_of(&v0));
+        assert!([1., 0.].is_right_of(&v0));
+        assert!(![-1., 0.].is_right_of(&v0));
+        assert!([0., 1.].is_right_of(&v0));
+        assert!(![0., -1.].is_right_of(&v0));
+        assert!(!v0.is_right_of(&v0));
     }
 
     #[test]
