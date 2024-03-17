@@ -664,4 +664,52 @@ mod tests {
         assert_eq!(ymin, 0.);
         assert_eq!(ymax, 1.);
     }
+
+    #[test]
+    fn right_of() {
+        let v0 = Vertex {
+            coords: [0., 0.],
+            hedge: HedgeId(0),
+        };
+        let v1 = Vertex {
+            coords: [1., 0.],
+            hedge: HedgeId(0),
+        };
+        let v2 = Vertex {
+            coords: [-1., 0.],
+            hedge: HedgeId(0),
+        };
+        let v3 = Vertex {
+            coords: [0., 1.],
+            hedge: HedgeId(0),
+        };
+        let v4 = Vertex {
+            coords: [0., -1.],
+            hedge: HedgeId(0),
+        };
+        let v5 = Vertex {
+            coords: [0., 0.],
+            hedge: HedgeId(0),
+        };
+
+        assert!(v1.is_right_of(&v0));
+        assert!(!v2.is_right_of(&v0));
+        assert!(v3.is_right_of(&v0));
+        assert!(!v4.is_right_of(&v0));
+        assert!(!v5.is_right_of(&v0));
+    }
+
+    #[test]
+    fn points_to_the_right() {
+        let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let polygons = vec![[0, 1, 2]];
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+
+        assert!(dcel.get_hedge(HedgeId(0)).points_to_the_right(&dcel));
+        assert!(!dcel.get_hedge(HedgeId(1)).points_to_the_right(&dcel));
+        assert!(!dcel.get_hedge(HedgeId(2)).points_to_the_right(&dcel));
+        assert!(!dcel.get_hedge(HedgeId(3)).points_to_the_right(&dcel));
+        assert!(dcel.get_hedge(HedgeId(4)).points_to_the_right(&dcel));
+        assert!(dcel.get_hedge(HedgeId(5)).points_to_the_right(&dcel));
+    }
 }
