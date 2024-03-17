@@ -113,17 +113,12 @@ impl TrapMap {
 
     fn add_edge(&mut self, hedge_id: HedgeId) -> Result<()> {
         let hedge = self.dcel.get_hedge(hedge_id);
-        let twin = self.dcel.get_hedge(hedge.twin);
 
-        let pid = hedge.origin;
-        let p = self.dcel.get_vertex(pid);
-        let qid = twin.origin;
-        let q = self.dcel.get_vertex(qid);
-
-        if !q.is_right_of(p) {
+        if !hedge.points_to_the_right(&self.dcel) {
             return Err(anyhow!("Only edges pointing to the right should be added."));
         }
 
+        let p = self.dcel.get_vertex(hedge.origin);
         let _trap = self.find_trapezoid(&p.coords);
 
         Ok(())

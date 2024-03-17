@@ -22,13 +22,7 @@ pub(crate) struct Vertex {
 
 impl Vertex {
     pub fn is_right_of(&self, other: &Self) -> bool {
-        let [x0, y0] = other.coords;
-        let [x1, y1] = self.coords;
-        if x1 == x0 {
-            y1 > y0
-        } else {
-            x1 > x0
-        }
+        self.coords > other.coords
     }
 }
 
@@ -56,6 +50,17 @@ pub(crate) struct Hedge {
 impl Hedge {
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn points_to_the_right(&self, dcel: &Dcel) -> bool {
+        let twin = dcel.get_hedge(self.twin);
+
+        let pid = self.origin;
+        let p = dcel.get_vertex(pid);
+        let qid = twin.origin;
+        let q = dcel.get_vertex(qid);
+
+        q.is_right_of(p)
     }
 }
 
