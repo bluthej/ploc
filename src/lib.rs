@@ -99,14 +99,17 @@ impl TrapMap {
     }
 
     fn find_trapezoid(&self, _point: &[f32; 2]) -> &Trapezoid {
-        match self
-            .tree
-            .get(self.root)
-            .expect("There should always be a root")
-            .get()
-        {
-            Node::Trap(trapezoid) => trapezoid,
-            _ => unreachable!("For the root node is necessarily a trapezoid"),
+        let node_id = self.root;
+        loop {
+            match self
+                .tree
+                .get(node_id)
+                .expect("Node ids should always exist")
+                .get()
+            {
+                Node::Trap(trapezoid) => return trapezoid,
+                _ => todo!("Handle X and Y nodes later"),
+            }
         }
     }
 
