@@ -20,6 +20,7 @@ enum Node {
 }
 
 // TODO: add leftp and rightp
+#[derive(Clone)]
 struct Trapezoid {
     top: HedgeId,
     bottom: HedgeId,
@@ -89,16 +90,64 @@ impl TrapMap {
         }
     }
 
+    fn count_x_nodes(&self) -> usize {
+        let mut count = 0;
+        for node in self.tree.iter() {
+            if matches!(node.get(), Node::X) {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    fn count_y_nodes(&self) -> usize {
+        let mut count = 0;
+        for node in self.tree.iter() {
+            if matches!(node.get(), Node::Y) {
+                count += 1;
+            }
+        }
+        count
+    }
+
     fn count_traps(&self) -> usize {
-        self.tree.count()
+        let mut count = 0;
+        for node in self.tree.iter() {
+            if matches!(node.get(), Node::Trap(..)) {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    fn count_nodes(&self) -> (usize, usize, usize) {
+        let mut trap_count = 0;
+        let mut x_node_count = 0;
+        let mut y_node_count = 0;
+        for node in self.tree.iter() {
+            match node.get() {
+                Node::X => x_node_count += 1,
+                Node::Y => y_node_count += 1,
+                Node::Trap(_) => trap_count += 1,
+            }
+        }
+        (x_node_count, y_node_count, trap_count)
+    }
+
+    fn print_stats(&self) {
+        let (x_node_count, y_node_count, trap_count) = self.count_nodes();
+        println!(
+            "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
+            x_node_count, y_node_count, trap_count
+        );
     }
 
     fn find_face(&self, point: &[f32; 2]) -> Option<FaceId> {
-        let trap = self.find_trapezoid(point);
+        let (_, trap) = self.find_trapezoid(point);
         self.dcel.get_hedge(trap.bottom).face
     }
 
-    fn find_trapezoid(&self, _point: &[f32; 2]) -> &Trapezoid {
+    fn find_trapezoid(&self, _point: &[f32; 2]) -> (indextree::NodeId, &Trapezoid) {
         let node_id = self.root;
         loop {
             match self
@@ -107,17 +156,34 @@ impl TrapMap {
                 .expect("Node ids should always exist")
                 .get()
             {
-                Node::Trap(trapezoid) => return trapezoid,
+                Node::Trap(trapezoid) => return (node_id, trapezoid),
                 _ => todo!("Handle X and Y nodes later"),
             }
         }
     }
 
     fn add_edge(&mut self, hedge_id: HedgeId) {
+        self.print_stats();
         let hedge = self.dcel.get_hedge(hedge_id);
         let p = self.dcel.get_vertex(hedge.origin);
-        let _trap = self.find_trapezoid(&p.coords);
-        todo!("Implement the rest");
+        let (old_nid, _old_trap) = self.find_trapezoid(&p.coords);
+
+        let p_nid = self.tree.new_node(Node::X);
+        old_nid.prepend(p_nid, &mut self.tree);
+        let q_nid = p_nid.append_value(Node::X, &mut self.tree);
+
+        let s_nid = q_nid.append_value(Node::Y, &mut self.tree);
+        let b_trap = Trapezoid {
+            top: HedgeId(0),
+            bottom: HedgeId(0),
+        };
+        let c_trap = b_trap.clone();
+        let d_trap = b_trap.clone();
+        let _b_nid = q_nid.append_value(Node::Trap(b_trap), &mut self.tree);
+
+        let _c_nid = s_nid.append_value(Node::Trap(c_trap), &mut self.tree);
+        let _d_nid = s_nid.append_value(Node::Trap(d_trap), &mut self.tree);
+        self.print_stats();
     }
 }
 
@@ -136,6 +202,8 @@ mod tests {
     fn find_trap_in_empty_trapezoidal_map() {
         let trap_map = TrapMap::new();
         assert_eq!(trap_map.count_traps(), 1);
+        assert_eq!(trap_map.count_x_nodes(), 0);
+        assert_eq!(trap_map.count_y_nodes(), 0);
 
         let point = [0., 0.];
         let _trap = trap_map.find_trapezoid(&point);
@@ -162,5 +230,19 @@ mod tests {
         assert!(bbox.xmax > 1.);
         assert!(bbox.ymin < 0.);
         assert!(bbox.ymax > 1.);
+    }
+
+    #[test]
+    fn add_first_edge() {
+        let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let polygons = vec![[0, 1, 2]];
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let mut trap_map = TrapMap::with_dcel(dcel);
+
+        trap_map.add_edge(HedgeId(0));
+
+        assert_eq!(trap_map.count_traps(), 4);
+        assert_eq!(trap_map.count_x_nodes(), 2);
+        assert_eq!(trap_map.count_y_nodes(), 1);
     }
 }
