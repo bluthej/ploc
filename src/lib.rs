@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod dcel;
+mod graph;
 mod mesh;
 mod winding_number;
 
