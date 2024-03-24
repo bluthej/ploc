@@ -41,14 +41,7 @@ impl<T> Graph<T> {
     }
 
     fn insert_after(&mut self, data: T, idx: usize) -> Result<usize> {
-        let new_idx = self.add(data);
-        self.arena
-            .get_mut(idx)
-            .ok_or(anyhow!("Node with index {} does not exist.", idx))?
-            .children
-            .push(new_idx);
-        self.arena[new_idx].parents.push(idx);
-        Ok(new_idx)
+        self.insert_after_many(data, &[idx])
     }
 
     fn insert_after_many(&mut self, data: T, idxs: &[usize]) -> Result<usize> {
@@ -66,12 +59,15 @@ impl<T> Graph<T> {
 
     fn insert_before(&mut self, data: T, idx: usize) -> Result<usize> {
         let new_idx = self.add(data);
+        // Store old node's parents
         let old_node = self
             .arena
             .get_mut(idx)
             .ok_or(anyhow!("Node with index {} does not exist.", idx))?;
         let old_parents = std::mem::take(&mut old_node.parents);
+        // Swap the node indices so that the new node takes the old node's place
         self.arena.swap(idx, new_idx);
+        // Set the parents and children
         self.arena[idx].parents = old_parents;
         self.arena[idx].children.push(new_idx);
         self.arena[new_idx].parents.push(idx);
