@@ -46,6 +46,15 @@ impl<T> Graph<T> {
         new_idx
     }
 
+    fn insert_after_many(&mut self, data: T, idxs: &[usize]) -> usize {
+        let new_idx = self.add(data);
+        for &idx in idxs {
+            self.arena[idx].children.push(new_idx);
+            self.arena[new_idx].parents.push(idx);
+        }
+        new_idx
+    }
+
     fn insert_before(&mut self, data: T, idx: usize) -> usize {
         let new_idx = self.add(data);
         let old_parents = std::mem::take(&mut self.arena[idx].parents);
@@ -145,11 +154,7 @@ mod tests {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
         let idx1 = graph.add(4);
-        let idx2 = graph.add(16);
-        graph.get_mut(idx0).children.push(idx2);
-        graph.get_mut(idx1).children.push(idx2);
-        graph.get_mut(idx2).parents.push(idx0);
-        graph.get_mut(idx2).parents.push(idx1);
+        let idx2 = graph.insert_after_many(16, &[idx0, idx1]);
 
         let idx = graph.insert_before(314, idx2);
 
