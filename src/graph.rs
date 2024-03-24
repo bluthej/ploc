@@ -2,19 +2,19 @@ use anyhow::{anyhow, Result};
 use std::slice::Iter;
 
 #[derive(Debug, Default)]
-struct Graph<T> {
+pub(crate) struct Graph<T> {
     arena: Vec<Node<T>>,
 }
 
 #[derive(Debug, Default)]
-struct Node<T> {
-    data: T,
+pub(crate) struct Node<T> {
+    pub(crate) data: T,
     parents: Vec<usize>,
     children: Vec<usize>,
 }
 
 impl<T> Graph<T> {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Graph { arena: Vec::new() }
     }
 
@@ -22,13 +22,13 @@ impl<T> Graph<T> {
         self.arena.len()
     }
 
-    fn add(&mut self, data: T) -> usize {
+    pub(crate) fn add(&mut self, data: T) -> usize {
         let idx = self.arena.len();
         self.arena.push(Node::new(data));
         idx
     }
 
-    fn get(&self, idx: usize) -> Option<&Node<T>> {
+    pub(crate) fn get(&self, idx: usize) -> Option<&Node<T>> {
         self.arena.get(idx)
     }
 
@@ -36,11 +36,11 @@ impl<T> Graph<T> {
         self.arena.get_mut(idx)
     }
 
-    fn iter(&self) -> Iter<'_, Node<T>> {
+    pub(crate) fn iter(&self) -> Iter<'_, Node<T>> {
         self.arena.iter()
     }
 
-    fn append_to(&mut self, data: T, idx: usize) -> Result<usize> {
+    pub(crate) fn append_to(&mut self, data: T, idx: usize) -> Result<usize> {
         self.append_to_many(data, &[idx])
     }
 
@@ -57,7 +57,7 @@ impl<T> Graph<T> {
         Ok(new_idx)
     }
 
-    fn insert_before(&mut self, data: T, idx: usize) -> Result<usize> {
+    pub(crate) fn insert_before(&mut self, data: T, idx: usize) -> Result<usize> {
         let new_idx = self.add(data);
         // Store old node's parents
         let old_node = self
