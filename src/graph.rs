@@ -30,6 +30,13 @@ impl<T> Graph<T> {
     fn iter(&self) -> Iter<'_, Node<T>> {
         self.arena.iter()
     }
+
+    fn append(&mut self, data: T, idx: usize) -> usize {
+        let new_idx = self.add(data);
+        self.arena[idx].children.push(new_idx);
+        self.arena[new_idx].parents.push(idx);
+        new_idx
+    }
 }
 
 impl<T> Node<T> {
@@ -83,5 +90,17 @@ mod tests {
         let values: Vec<usize> = graph.iter().map(|node| node.data).collect();
 
         assert_eq!(&values, &[42, 314]);
+    }
+
+    #[test]
+    fn append_node() {
+        let mut graph = Graph::<usize>::new();
+        let idx0 = graph.add(42);
+
+        let idx = graph.append(314, idx0);
+
+        assert_eq!(idx, 1);
+        assert_eq!(&graph.arena[idx0].children, &[1]);
+        assert_eq!(&graph.arena[idx].parents, &[0]);
     }
 }
