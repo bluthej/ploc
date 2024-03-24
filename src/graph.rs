@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn graph_iter() {
-        let mut graph = Graph::<usize>::new();
+        let mut graph = Graph::new();
         graph.add(42);
         graph.add(314);
 
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn append_node() -> Result<()> {
-        let mut graph = Graph::<usize>::new();
+        let mut graph = Graph::new();
         let idx0 = graph.add(42);
 
         let idx = graph.append_to(314, idx0)?;
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn prepend_node() -> Result<()> {
-        let mut graph = Graph::<usize>::new();
+        let mut graph = Graph::new();
         let idx0 = graph.add(42);
 
         let idx = graph.insert_before(314, idx0)?;
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn prepend_node_with_multiple_parents() -> Result<()> {
-        let mut graph = Graph::<usize>::new();
+        let mut graph = Graph::new();
         let idx0 = graph.add(42);
         let idx1 = graph.add(4);
         let idx2 = graph.append_to_many(16, &[idx0, idx1])?;
