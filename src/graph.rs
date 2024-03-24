@@ -39,14 +39,14 @@ impl<T> Graph<T> {
         self.arena.iter()
     }
 
-    fn append(&mut self, data: T, idx: usize) -> usize {
+    fn insert_after(&mut self, data: T, idx: usize) -> usize {
         let new_idx = self.add(data);
         self.arena[idx].children.push(new_idx);
         self.arena[new_idx].parents.push(idx);
         new_idx
     }
 
-    fn prepend(&mut self, data: T, idx: usize) -> usize {
+    fn insert_before(&mut self, data: T, idx: usize) -> usize {
         let new_idx = self.add(data);
         let old_parents = std::mem::take(&mut self.arena[idx].parents);
         self.arena.swap(idx, new_idx);
@@ -115,7 +115,7 @@ mod tests {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
 
-        let idx = graph.append(314, idx0);
+        let idx = graph.insert_after(314, idx0);
 
         assert_eq!(idx, 1);
         assert_eq!(graph.get(idx0).children, &[idx]);
@@ -129,7 +129,7 @@ mod tests {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
 
-        let idx = graph.prepend(314, idx0);
+        let idx = graph.insert_before(314, idx0);
 
         assert_eq!(idx, 1);
         assert_eq!(graph.get(idx0).data, 314);
@@ -151,7 +151,7 @@ mod tests {
         graph.get_mut(idx2).parents.push(idx0);
         graph.get_mut(idx2).parents.push(idx1);
 
-        let idx = graph.prepend(314, idx2);
+        let idx = graph.insert_before(314, idx2);
 
         assert_eq!(idx, 3);
         assert_eq!(graph.get(idx2).data, 314);
