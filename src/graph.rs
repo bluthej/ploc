@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use std::slice::Iter;
 
 #[derive(Debug, Default)]
@@ -27,42 +28,54 @@ impl<T> Graph<T> {
         idx
     }
 
-    fn get(&self, idx: usize) -> &Node<T> {
-        &self.arena[idx]
+    fn get(&self, idx: usize) -> Option<&Node<T>> {
+        self.arena.get(idx)
     }
 
-    fn get_mut(&mut self, idx: usize) -> &mut Node<T> {
-        &mut self.arena[idx]
+    fn get_mut(&mut self, idx: usize) -> Option<&mut Node<T>> {
+        self.arena.get_mut(idx)
     }
 
     fn iter(&self) -> Iter<'_, Node<T>> {
         self.arena.iter()
     }
 
-    fn insert_after(&mut self, data: T, idx: usize) -> usize {
+    fn insert_after(&mut self, data: T, idx: usize) -> Result<usize> {
         let new_idx = self.add(data);
-        self.arena[idx].children.push(new_idx);
+        self.arena
+            .get_mut(idx)
+            .ok_or(anyhow!("Node with index {} does not exist.", idx))?
+            .children
+            .push(new_idx);
         self.arena[new_idx].parents.push(idx);
-        new_idx
+        Ok(new_idx)
     }
 
-    fn insert_after_many(&mut self, data: T, idxs: &[usize]) -> usize {
+    fn insert_after_many(&mut self, data: T, idxs: &[usize]) -> Result<usize> {
         let new_idx = self.add(data);
         for &idx in idxs {
-            self.arena[idx].children.push(new_idx);
+            self.arena
+                .get_mut(idx)
+                .ok_or(anyhow!("Node with index {} does not exist.", idx))?
+                .children
+                .push(new_idx);
             self.arena[new_idx].parents.push(idx);
         }
-        new_idx
+        Ok(new_idx)
     }
 
-    fn insert_before(&mut self, data: T, idx: usize) -> usize {
+    fn insert_before(&mut self, data: T, idx: usize) -> Result<usize> {
         let new_idx = self.add(data);
-        let old_parents = std::mem::take(&mut self.arena[idx].parents);
+        let old_node = self
+            .arena
+            .get_mut(idx)
+            .ok_or(anyhow!("Node with index {} does not exist.", idx))?;
+        let old_parents = std::mem::take(&mut old_node.parents);
         self.arena.swap(idx, new_idx);
         self.arena[idx].parents = old_parents;
         self.arena[idx].children.push(new_idx);
         self.arena[new_idx].parents.push(idx);
-        new_idx
+        Ok(new_idx)
     }
 }
 
@@ -120,50 +133,56 @@ mod tests {
     }
 
     #[test]
-    fn append_node() {
+    fn append_node() -> Result<()> {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
 
-        let idx = graph.insert_after(314, idx0);
+        let idx = graph.insert_after(314, idx0)?;
 
         assert_eq!(idx, 1);
-        assert_eq!(graph.get(idx0).children, &[idx]);
-        assert!(graph.get(idx0).parents.is_empty());
-        assert_eq!(graph.get(idx).parents, &[idx0]);
-        assert!(graph.get(idx).children.is_empty());
+        assert_eq!(graph.get(idx0).unwrap().children, &[idx]);
+        assert!(graph.get(idx0).unwrap().parents.is_empty());
+        assert_eq!(graph.get(idx).unwrap().parents, &[idx0]);
+        assert!(graph.get(idx).unwrap().children.is_empty());
+
+        Ok(())
     }
 
     #[test]
-    fn prepend_node() {
+    fn prepend_node() -> Result<()> {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
 
-        let idx = graph.insert_before(314, idx0);
+        let idx = graph.insert_before(314, idx0)?;
 
         assert_eq!(idx, 1);
-        assert_eq!(graph.get(idx0).data, 314);
-        assert_eq!(graph.get(idx0).children, &[idx]);
-        assert!(graph.get(idx0).parents.is_empty());
-        assert_eq!(graph.get(idx).data, 42);
-        assert_eq!(graph.get(idx).parents, &[idx0]);
-        assert!(graph.get(idx).children.is_empty());
+        assert_eq!(graph.get(idx0).unwrap().data, 314);
+        assert_eq!(graph.get(idx0).unwrap().children, &[idx]);
+        assert!(graph.get(idx0).unwrap().parents.is_empty());
+        assert_eq!(graph.get(idx).unwrap().data, 42);
+        assert_eq!(graph.get(idx).unwrap().parents, &[idx0]);
+        assert!(graph.get(idx).unwrap().children.is_empty());
+
+        Ok(())
     }
 
     #[test]
-    fn prepend_node_with_multiple_parents() {
+    fn prepend_node_with_multiple_parents() -> Result<()> {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
         let idx1 = graph.add(4);
-        let idx2 = graph.insert_after_many(16, &[idx0, idx1]);
+        let idx2 = graph.insert_after_many(16, &[idx0, idx1])?;
 
-        let idx = graph.insert_before(314, idx2);
+        let idx = graph.insert_before(314, idx2)?;
 
         assert_eq!(idx, 3);
-        assert_eq!(graph.get(idx2).data, 314);
-        assert_eq!(graph.get(idx2).children, &[idx]);
-        assert_eq!(graph.get(idx2).parents, &[idx0, idx1]);
-        assert_eq!(graph.get(idx).data, 16);
-        assert_eq!(graph.get(idx).parents, &[idx2]);
-        assert!(graph.get(idx).children.is_empty());
+        assert_eq!(graph.get(idx2).unwrap().data, 314);
+        assert_eq!(graph.get(idx2).unwrap().children, &[idx]);
+        assert_eq!(graph.get(idx2).unwrap().parents, &[idx0, idx1]);
+        assert_eq!(graph.get(idx).unwrap().data, 16);
+        assert_eq!(graph.get(idx).unwrap().parents, &[idx2]);
+        assert!(graph.get(idx).unwrap().children.is_empty());
+
+        Ok(())
     }
 }
