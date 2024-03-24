@@ -27,6 +27,10 @@ impl<T> Graph<T> {
         idx
     }
 
+    fn get(&self, idx: usize) -> &Node<T> {
+        &self.arena[idx]
+    }
+
     fn iter(&self) -> Iter<'_, Node<T>> {
         self.arena.iter()
     }
@@ -110,10 +114,10 @@ mod tests {
         let idx = graph.append(314, idx0);
 
         assert_eq!(idx, 1);
-        assert_eq!(&graph.arena[idx0].children, &[1]);
-        assert!(&graph.arena[idx0].parents.is_empty());
-        assert_eq!(&graph.arena[idx].parents, &[0]);
-        assert!(&graph.arena[idx].children.is_empty());
+        assert_eq!(graph.get(idx0).children, &[idx]);
+        assert!(graph.get(idx0).parents.is_empty());
+        assert_eq!(graph.get(idx).parents, &[idx0]);
+        assert!(graph.get(idx).children.is_empty());
     }
 
     #[test]
@@ -124,12 +128,12 @@ mod tests {
         let idx = graph.prepend(314, idx0);
 
         assert_eq!(idx, 1);
-        assert_eq!(graph.arena[idx0].data, 314);
-        assert_eq!(&graph.arena[idx0].children, &[idx]);
-        assert!(&graph.arena[idx0].parents.is_empty());
-        assert_eq!(graph.arena[idx].data, 42);
-        assert_eq!(&graph.arena[idx].parents, &[idx0]);
-        assert!(&graph.arena[idx].children.is_empty());
+        assert_eq!(graph.get(idx0).data, 314);
+        assert_eq!(graph.get(idx0).children, &[idx]);
+        assert!(graph.get(idx0).parents.is_empty());
+        assert_eq!(graph.get(idx).data, 42);
+        assert_eq!(graph.get(idx).parents, &[idx0]);
+        assert!(graph.get(idx).children.is_empty());
     }
 
     #[test]
@@ -146,11 +150,11 @@ mod tests {
         let idx = graph.prepend(314, idx2);
 
         assert_eq!(idx, 3);
-        assert_eq!(graph.arena[idx2].data, 314);
-        assert_eq!(&graph.arena[idx2].children, &[idx]);
-        assert_eq!(&graph.arena[idx2].parents, &[idx0, idx1]);
-        assert_eq!(graph.arena[idx].data, 16);
-        assert_eq!(&graph.arena[idx].parents, &[idx2]);
-        assert!(&graph.arena[idx].children.is_empty());
+        assert_eq!(graph.get(idx2).data, 314);
+        assert_eq!(graph.get(idx2).children, &[idx]);
+        assert_eq!(graph.get(idx2).parents, &[idx0, idx1]);
+        assert_eq!(graph.get(idx).data, 16);
+        assert_eq!(graph.get(idx).parents, &[idx2]);
+        assert!(graph.get(idx).children.is_empty());
     }
 }
