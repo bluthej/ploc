@@ -37,6 +37,16 @@ impl<T> Graph<T> {
         self.arena[new_idx].parents.push(idx);
         new_idx
     }
+
+    fn prepend(&mut self, data: T, idx: usize) -> usize {
+        let new_idx = self.add(data);
+        let old_parents = std::mem::take(&mut self.arena[idx].parents);
+        self.arena.swap(idx, new_idx);
+        self.arena[idx].parents = old_parents;
+        self.arena[idx].children.push(new_idx);
+        self.arena[new_idx].parents.push(idx);
+        new_idx
+    }
 }
 
 impl<T> Node<T> {
@@ -101,6 +111,46 @@ mod tests {
 
         assert_eq!(idx, 1);
         assert_eq!(&graph.arena[idx0].children, &[1]);
+        assert!(&graph.arena[idx0].parents.is_empty());
         assert_eq!(&graph.arena[idx].parents, &[0]);
+        assert!(&graph.arena[idx].children.is_empty());
+    }
+
+    #[test]
+    fn prepend_node() {
+        let mut graph = Graph::<usize>::new();
+        let idx0 = graph.add(42);
+
+        let idx = graph.prepend(314, idx0);
+
+        assert_eq!(idx, 1);
+        assert_eq!(graph.arena[idx0].data, 314);
+        assert_eq!(&graph.arena[idx0].children, &[idx]);
+        assert!(&graph.arena[idx0].parents.is_empty());
+        assert_eq!(graph.arena[idx].data, 42);
+        assert_eq!(&graph.arena[idx].parents, &[idx0]);
+        assert!(&graph.arena[idx].children.is_empty());
+    }
+
+    #[test]
+    fn prepend_node_with_multiple_parents() {
+        let mut graph = Graph::<usize>::new();
+        let idx0 = graph.add(42);
+        let idx1 = graph.add(4);
+        let idx2 = graph.add(16);
+        graph.arena[idx0].children.push(idx2);
+        graph.arena[idx1].children.push(idx2);
+        graph.arena[idx2].parents.push(idx0);
+        graph.arena[idx2].parents.push(idx1);
+
+        let idx = graph.prepend(314, idx2);
+
+        assert_eq!(idx, 3);
+        assert_eq!(graph.arena[idx2].data, 314);
+        assert_eq!(&graph.arena[idx2].children, &[idx]);
+        assert_eq!(&graph.arena[idx2].parents, &[idx0, idx1]);
+        assert_eq!(graph.arena[idx].data, 16);
+        assert_eq!(&graph.arena[idx].parents, &[idx2]);
+        assert!(&graph.arena[idx].children.is_empty());
     }
 }
