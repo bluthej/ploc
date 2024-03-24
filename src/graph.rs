@@ -31,6 +31,10 @@ impl<T> Graph<T> {
         &self.arena[idx]
     }
 
+    fn get_mut(&mut self, idx: usize) -> &mut Node<T> {
+        &mut self.arena[idx]
+    }
+
     fn iter(&self) -> Iter<'_, Node<T>> {
         self.arena.iter()
     }
@@ -142,10 +146,10 @@ mod tests {
         let idx0 = graph.add(42);
         let idx1 = graph.add(4);
         let idx2 = graph.add(16);
-        graph.arena[idx0].children.push(idx2);
-        graph.arena[idx1].children.push(idx2);
-        graph.arena[idx2].parents.push(idx0);
-        graph.arena[idx2].parents.push(idx1);
+        graph.get_mut(idx0).children.push(idx2);
+        graph.get_mut(idx1).children.push(idx2);
+        graph.get_mut(idx2).parents.push(idx0);
+        graph.get_mut(idx2).parents.push(idx1);
 
         let idx = graph.prepend(314, idx2);
 
