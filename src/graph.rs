@@ -40,11 +40,11 @@ impl<T> Graph<T> {
         self.arena.iter()
     }
 
-    fn insert_after(&mut self, data: T, idx: usize) -> Result<usize> {
-        self.insert_after_many(data, &[idx])
+    fn append_to(&mut self, data: T, idx: usize) -> Result<usize> {
+        self.append_to_many(data, &[idx])
     }
 
-    fn insert_after_many(&mut self, data: T, idxs: &[usize]) -> Result<usize> {
+    fn append_to_many(&mut self, data: T, idxs: &[usize]) -> Result<usize> {
         let new_idx = self.add(data);
         for &idx in idxs {
             self.arena
@@ -133,7 +133,7 @@ mod tests {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
 
-        let idx = graph.insert_after(314, idx0)?;
+        let idx = graph.append_to(314, idx0)?;
 
         assert_eq!(idx, 1);
         assert_eq!(graph.get(idx0).unwrap().children, &[idx]);
@@ -167,7 +167,7 @@ mod tests {
         let mut graph = Graph::<usize>::new();
         let idx0 = graph.add(42);
         let idx1 = graph.add(4);
-        let idx2 = graph.insert_after_many(16, &[idx0, idx1])?;
+        let idx2 = graph.append_to_many(16, &[idx0, idx1])?;
 
         let idx = graph.insert_before(314, idx2)?;
 
