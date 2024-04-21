@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use std::slice::Iter;
 
 #[derive(Debug, Default)]
-pub(crate) struct Graph<T> {
+pub(crate) struct Dag<T> {
     arena: Vec<Node<T>>,
 }
 
@@ -13,9 +13,9 @@ pub(crate) struct Node<T> {
     children: Vec<usize>,
 }
 
-impl<T> Graph<T> {
+impl<T> Dag<T> {
     pub(crate) fn new() -> Self {
-        Graph { arena: Vec::new() }
+        Dag { arena: Vec::new() }
     }
 
     fn count(&self) -> usize {
@@ -90,10 +90,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn create_empty_graph() {
-        let graph = Graph::<usize>::new();
+    fn create_empty_dag() {
+        let dag = Dag::<usize>::new();
 
-        assert_eq!(graph.count(), 0);
+        assert_eq!(dag.count(), 0);
     }
 
     #[test]
@@ -105,79 +105,79 @@ mod tests {
     }
 
     #[test]
-    fn add_node_to_graph() {
-        let mut graph = Graph::new();
+    fn add_node_to_dag() {
+        let mut dag = Dag::new();
 
-        let idx = graph.add(42);
+        let idx = dag.add(42);
         assert_eq!(idx, 0);
-        assert_eq!(graph.count(), 1);
+        assert_eq!(dag.count(), 1);
 
-        let idx = graph.add(314);
+        let idx = dag.add(314);
         assert_eq!(idx, 1);
-        assert_eq!(graph.count(), 2);
+        assert_eq!(dag.count(), 2);
     }
 
     #[test]
-    fn graph_iter() {
-        let mut graph = Graph::new();
-        graph.add(42);
-        graph.add(314);
+    fn dag_iter() {
+        let mut dag = Dag::new();
+        dag.add(42);
+        dag.add(314);
 
-        let values: Vec<usize> = graph.iter().map(|node| node.data).collect();
+        let values: Vec<usize> = dag.iter().map(|node| node.data).collect();
 
         assert_eq!(&values, &[42, 314]);
     }
 
     #[test]
     fn append_node() -> Result<()> {
-        let mut graph = Graph::new();
-        let idx0 = graph.add(42);
+        let mut dag = Dag::new();
+        let idx0 = dag.add(42);
 
-        let idx = graph.append_to(314, idx0)?;
+        let idx = dag.append_to(314, idx0)?;
 
         assert_eq!(idx, 1);
-        assert_eq!(graph.get(idx0).unwrap().children, &[idx]);
-        assert!(graph.get(idx0).unwrap().parents.is_empty());
-        assert_eq!(graph.get(idx).unwrap().parents, &[idx0]);
-        assert!(graph.get(idx).unwrap().children.is_empty());
+        assert_eq!(dag.get(idx0).unwrap().children, &[idx]);
+        assert!(dag.get(idx0).unwrap().parents.is_empty());
+        assert_eq!(dag.get(idx).unwrap().parents, &[idx0]);
+        assert!(dag.get(idx).unwrap().children.is_empty());
 
         Ok(())
     }
 
     #[test]
     fn prepend_node() -> Result<()> {
-        let mut graph = Graph::new();
-        let idx0 = graph.add(42);
+        let mut dag = Dag::new();
+        let idx0 = dag.add(42);
 
-        let idx = graph.insert_before(314, idx0)?;
+        let idx = dag.insert_before(314, idx0)?;
 
         assert_eq!(idx, 1);
-        assert_eq!(graph.get(idx0).unwrap().data, 314);
-        assert_eq!(graph.get(idx0).unwrap().children, &[idx]);
-        assert!(graph.get(idx0).unwrap().parents.is_empty());
-        assert_eq!(graph.get(idx).unwrap().data, 42);
-        assert_eq!(graph.get(idx).unwrap().parents, &[idx0]);
-        assert!(graph.get(idx).unwrap().children.is_empty());
+        assert_eq!(dag.get(idx0).unwrap().data, 314);
+        assert_eq!(dag.get(idx0).unwrap().children, &[idx]);
+        assert!(dag.get(idx0).unwrap().parents.is_empty());
+        assert_eq!(dag.get(idx).unwrap().data, 42);
+        assert_eq!(dag.get(idx).unwrap().parents, &[idx0]);
+        assert!(dag.get(idx).unwrap().children.is_empty());
 
         Ok(())
     }
 
     #[test]
     fn prepend_node_with_multiple_parents() -> Result<()> {
-        let mut graph = Graph::new();
-        let idx0 = graph.add(42);
-        let idx1 = graph.add(4);
-        let idx2 = graph.append_to_many(16, &[idx0, idx1])?;
+        let mut dag = Dag::new();
+        let idx0 = dag.add(42);
+        let idx1 = dag.add(4);
+        let idx2 = dag.append_to_many(16, &[idx0, idx1])?;
 
-        let idx = graph.insert_before(314, idx2)?;
+        let idx = dag.insert_before(314, idx2)?;
 
         assert_eq!(idx, 3);
-        assert_eq!(graph.get(idx2).unwrap().data, 314);
-        assert_eq!(graph.get(idx2).unwrap().children, &[idx]);
-        assert_eq!(graph.get(idx2).unwrap().parents, &[idx0, idx1]);
-        assert_eq!(graph.get(idx).unwrap().data, 16);
-        assert_eq!(graph.get(idx).unwrap().parents, &[idx2]);
-        assert!(graph.get(idx).unwrap().children.is_empty());
+        assert_eq!(dag.get(idx2).unwrap().data, 314);
+        assert_eq!(dag.get(idx2).unwrap().children, &[idx]);
+        assert_eq!(dag.get(idx2).unwrap().parents, &[idx0, idx1]);
+        assert_eq!(dag.get(idx).unwrap().data, 16);
+        assert_eq!(dag.get(idx).unwrap().parents, &[idx2]);
+        assert!(dag.get(idx).unwrap().children.is_empty());
 
         Ok(())
     }

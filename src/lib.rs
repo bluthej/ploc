@@ -1,17 +1,17 @@
 #![allow(dead_code)]
 
+mod dag;
 mod dcel;
-mod graph;
 mod mesh;
 mod winding_number;
 
+use dag::Dag;
 use dcel::{Dcel, FaceId, Hedge, HedgeId};
-use graph::Graph;
 use mesh::Mesh;
 
 struct TrapMap {
     dcel: Dcel,
-    graph: Graph<Node>,
+    dag: Dag<Node>,
     bbox: BoundingBox,
 }
 
@@ -74,43 +74,43 @@ impl TrapMap {
     }
 
     fn with_dcel(dcel: Dcel) -> Self {
-        let mut graph = Graph::new();
+        let mut dag = Dag::new();
 
         let mut dcel = dcel;
         let top = dcel.add_hedge(Hedge::new());
         let bottom = dcel.add_hedge(Hedge::new());
 
-        graph.add(Node::Trap(Trapezoid { top, bottom }));
+        dag.add(Node::Trap(Trapezoid { top, bottom }));
 
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
         let bbox = BoundingBox::from_bounds(xmin, xmax, ymin, ymax);
 
-        Self { dcel, graph, bbox }
+        Self { dcel, dag, bbox }
     }
 
     fn count_x_nodes(&self) -> usize {
-        self.graph
+        self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::X))
             .count()
     }
 
     fn count_y_nodes(&self) -> usize {
-        self.graph
+        self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::Y))
             .count()
     }
 
     fn count_traps(&self) -> usize {
-        self.graph
+        self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::Trap(..)))
             .count()
     }
 
     fn count_nodes(&self) -> (usize, usize, usize) {
-        self.graph.iter().fold(
+        self.dag.iter().fold(
             (0, 0, 0),
             |(mut x_count, mut y_count, mut trap_count), node| {
                 match node.data {
@@ -139,7 +139,7 @@ impl TrapMap {
     fn find_trapezoid(&self, _point: &[f32; 2]) -> (usize, &Trapezoid) {
         let node_id = 0;
         loop {
-            match &self.graph.get(node_id).unwrap().data {
+            match &self.dag.get(node_id).unwrap().data {
                 Node::Trap(trapezoid) => return (node_id, trapezoid),
                 _ => todo!("Handle X and Y nodes later"),
             }
@@ -154,18 +154,18 @@ impl TrapMap {
 
         let (old_nid, _old_trap) = self.find_trapezoid(&p.coords);
 
-        let p_nid = self.graph.insert_before(Node::X, old_nid).unwrap();
-        let q_nid = self.graph.append_to(Node::X, p_nid).unwrap();
-        let s_nid = self.graph.append_to(Node::Y, q_nid).unwrap();
+        let p_nid = self.dag.insert_before(Node::X, old_nid).unwrap();
+        let q_nid = self.dag.append_to(Node::X, p_nid).unwrap();
+        let s_nid = self.dag.append_to(Node::Y, q_nid).unwrap();
         let b_trap = Trapezoid {
             top: HedgeId(0),
             bottom: HedgeId(0),
         };
         let c_trap = b_trap.clone();
         let d_trap = b_trap.clone();
-        let _b_nid = self.graph.append_to(Node::Trap(b_trap), q_nid);
-        let _c_nid = self.graph.append_to(Node::Trap(c_trap), s_nid);
-        let _d_nid = self.graph.append_to(Node::Trap(d_trap), s_nid);
+        let _b_nid = self.dag.append_to(Node::Trap(b_trap), q_nid);
+        let _c_nid = self.dag.append_to(Node::Trap(c_trap), s_nid);
+        let _d_nid = self.dag.append_to(Node::Trap(d_trap), s_nid);
 
         self.print_stats();
     }
