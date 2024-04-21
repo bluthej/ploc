@@ -32,6 +32,8 @@ impl Point {
     /// - `0` if the [`Point`] is not inside the polygon
     /// - `> 0` if the [`Point`] is inside the polygon and the polygon "winds" at least once around the [`Point`] counter-clockwise
     /// - `< 0` if the [`Point`] is inside the polygon and the polygon "winds" at least once around the [`Point`] clockwise
+    ///
+    /// For more information, see <https://web.archive.org/web/20130126163405/http://geomalgorithms.com/a03-_inclusion.html>.
     fn wn(&self, poly: &[Point]) -> isize {
         let mut wn = 0;
         for (a, b) in poly.iter().circular_tuple_windows() {
