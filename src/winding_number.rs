@@ -89,6 +89,10 @@ mod tests {
         assert_eq!(Point { x: 0.5, y: 0.5 }.wn(&poly), 1);
         assert_eq!(Point { x: 1.5, y: 0.5 }.wn(&poly), 0);
         assert_eq!(Point { x: 0.5, y: 1.5 }.wn(&poly), 0);
+        assert_eq!(Point { x: 0., y: 0.5 }.wn(&poly), 1); // Left edges are included
+        assert_eq!(Point { x: 0.5, y: 0. }.wn(&poly), 1); // Bottom edges are included
+        assert_eq!(Point { x: 1.0, y: 1.5 }.wn(&poly), 0); // Right edges are not included
+        assert_eq!(Point { x: 0.5, y: 1. }.wn(&poly), 0); // Top edges are not included
     }
 
     #[test]
