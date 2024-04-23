@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.81"
 indextree = "4.6.0"
+itertools = "0.12.1"

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod dcel;
+mod winding_number;
 
 use dcel::{Dcel, FaceId, Hedge, HedgeId};
 use indextree::Arena;
