@@ -81,22 +81,63 @@ mod tests {
 
     #[test]
     fn winding_number_square() {
+        //
+        //            2
+        //
+        //
+        //     +------6------+
+        //     |             |
+        //     |             |
+        //     |             |
+        //     3      0      5      1
+        //     |             |
+        //     |             |
+        //     |             |
+        //     +------4------+
+        //
         let poly: Vec<_> = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]]
             .iter()
             .map(|&[x, y]| Point { x, y })
             .collect();
 
-        assert_eq!(Point { x: 0.5, y: 0.5 }.wn(&poly), 1);
-        assert_eq!(Point { x: 1.5, y: 0.5 }.wn(&poly), 0);
-        assert_eq!(Point { x: 0.5, y: 1.5 }.wn(&poly), 0);
-        assert_eq!(Point { x: 0., y: 0.5 }.wn(&poly), 1); // Left edges are included
-        assert_eq!(Point { x: 0.5, y: 0. }.wn(&poly), 1); // Bottom edges are included
-        assert_eq!(Point { x: 1.0, y: 1.5 }.wn(&poly), 0); // Right edges are not included
-        assert_eq!(Point { x: 0.5, y: 1. }.wn(&poly), 0); // Top edges are not included
+        let p0 = Point { x: 0.5, y: 0.5 };
+        let p1 = Point { x: 1.5, y: 0.5 };
+        let p2 = Point { x: 0.5, y: 1.5 };
+        let p3 = Point { x: 0., y: 0.5 };
+        let p4 = Point { x: 0.5, y: 0. };
+        let p5 = Point { x: 1.0, y: 0.5 };
+        let p6 = Point { x: 0.5, y: 1. };
+        assert_eq!(p0.wn(&poly), 1);
+        assert_eq!(p1.wn(&poly), 0);
+        assert_eq!(p2.wn(&poly), 0);
+        assert_eq!(p3.wn(&poly), 1); // Left edges are included
+        assert_eq!(p4.wn(&poly), 1); // Bottom edges are included
+        assert_eq!(p5.wn(&poly), 0); // Right edges are not included
+        assert_eq!(p6.wn(&poly), 0); // Top edges are not included
     }
 
     #[test]
     fn winding_number_self_overlapping_polygon() {
+        //
+        // Think of the following polygon like an "L" with an outgrowth that goes up and to the
+        // right, so that there is a band that covers the vertical part of the "L" in which points
+        // are "twice" inside the polygon.
+        //
+        //     +------------+
+        //     |            |
+        //     |  +----------------------+
+        //     |  |         |            |
+        //     |  | inside  |            |
+        //     |  | twice   |            |
+        //     |  |      2  |            |
+        //     |  +-------------------+  |
+        //     |            |         |  |
+        //     |            | outside |  |
+        //     |            |    1    |  |
+        //     |            +---------+  |
+        //     | 0                       |
+        //     +-------------------------+
+        //
         let poly: Vec<_> = [
             [0., 0.],
             [1., 0.],
@@ -113,8 +154,11 @@ mod tests {
         .map(|&[x, y]| Point { x, y })
         .collect();
 
-        assert_eq!(Point { x: 0.1, y: 0.1 }.wn(&poly), 1);
-        assert_eq!(Point { x: 0.6, y: 0.3 }.wn(&poly), 0);
-        assert_eq!(Point { x: 0.4, y: 0.6 }.wn(&poly), 2);
+        let p0 = Point { x: 0.1, y: 0.1 };
+        let p1 = Point { x: 0.6, y: 0.3 };
+        let p2 = Point { x: 0.4, y: 0.6 };
+        assert_eq!(p0.wn(&poly), 1);
+        assert_eq!(p1.wn(&poly), 0);
+        assert_eq!(p2.wn(&poly), 2);
     }
 }
