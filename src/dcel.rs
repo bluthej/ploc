@@ -6,6 +6,8 @@ use std::{
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
+use itertools::Itertools;
+
 #[derive(Debug)]
 pub(crate) struct Dcel {
     vertices: Vec<Vertex>,
@@ -244,53 +246,103 @@ impl Dcel {
         FaceId(id)
     }
 
-    pub(crate) fn from_polygon_soup<const N: usize>(
+    /// Constructs a new `Dcel` from a polygon soup in an array-based representation.
+    ///
+    /// The expected representation of the input mesh is:
+    /// - An array of vertex coordinates (`vertices`)
+    /// - An array of polygon vertex indices (`polygons`)
+    /// - An array of offsets (`offsets`)
+    /// Cell number `i` is made up of vertices with indices listed in `polygons` in the range
+    /// `offsets[i]..offsets[i+1]`.
+    ///
+    /// This representation of a mesh is found in several places, two of which are:
+    /// - [axom](https://axom.readthedocs.io/en/develop/axom/mint/docs/sphinx/sections/mesh_types.html#mixedcelltopology)
+    /// - [geogram](https://github.com/BrunoLevy/geogram/wiki/Mesh#triangulated-and-polygonal-meshes)
+    /// It does have the advantage of allowing both single cell and mixed cell type topologies
+    /// (see the above link to the axom documentation).
+    ///
+    /// Note: There is a possible optimization in the case of single cell type topologies which
+    /// consists keeping the offsets implicit, which can save some memory. This has not been
+    /// implemented yet but is planned.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either of these conditions holds:
+    /// - `polygons` is empty
+    /// - `polygons` has vertex indices greater than the length of `vertices`
+    /// - `offsets` is not strictly increasing
+    /// - The last item of `offsets` is not the length of `polygons`
+    pub(crate) fn from_polygon_soup(
         vertices: &[[f32; 2]],
-        polygons: &[[usize; N]],
+        polygons: &[usize],
+        offsets: &[usize],
     ) -> Self {
-        let mut dcel = Self::with_capacity(vertices.len(), polygons.len(), N);
+        // TODO: add proper error handling (return a `Result`) with input validation:
+        // - Last item of `offsets` should be the length of `polygons`
+        // - Offsets should be strictly increasing
+        // - The max from `polygons` should be less than `vertices.len()`
+        assert_eq!(
+            offsets
+                .last()
+                .expect("There should be at least one polygon"),
+            &polygons.len(),
+            "Last item of `offsets` should be the length on the `polygons` slice"
+        );
+        assert!(
+            polygons
+                .iter()
+                .max()
+                .expect("There should be at least one polygon")
+                <= &vertices.len()
+        );
+
+        let nc = offsets.len() - 1;
+        let mut dcel = Self::with_capacity(vertices.len(), polygons.len(), nc);
         dcel.add_vertices(vertices);
 
         let mut current_hedge_id = HedgeId(0);
-        let mut edges = HashMap::with_capacity(polygons.len() * N);
-        for (face, polygon) in polygons.iter().enumerate() {
+        let mut edges = HashMap::with_capacity(polygons.len() * nc);
+        for (face, (&start, &end)) in offsets.iter().tuple_windows().enumerate() {
+            assert!(start < end, "`offsets` array should be strictly increasing");
+
             dcel.add_face(Face {
                 start: current_hedge_id,
             });
 
-            for (iloc, &vert) in polygon.iter().enumerate() {
+            let nf = end - start;
+            for (&a, &b) in polygons[start..end].iter().circular_tuple_windows() {
                 // Determine previous and next half-edge id
-                let (prev, next) = match iloc {
-                    0 => (current_hedge_id + N - 1, current_hedge_id + 1),
-                    ivert if ivert == N - 1 => (current_hedge_id - 1, current_hedge_id + 1 - N),
-                    _ => (current_hedge_id - 1, current_hedge_id + 1),
+                let prev = if a == polygons[start] {
+                    current_hedge_id + nf - 1
+                } else {
+                    current_hedge_id - 1
+                };
+                let next = if b == polygons[start] {
+                    current_hedge_id + 1 - nf
+                } else {
+                    current_hedge_id + 1
                 };
 
-                // Determine indices of edge vertices
-                let dest = if iloc == polygon.len() - 1 {
-                    polygon[0]
-                } else {
-                    polygon[iloc + 1]
-                };
-                let twin = if let Some(twin) = edges.remove(&(dest, vert)) {
+                let twin = if let Some(twin) = edges.remove(&(b, a)) {
                     // We have already seen the current half-edge's twin, and we know the current
                     // half-edge is its twin!
                     dcel.get_hedge_mut(twin).twin = current_hedge_id;
                     twin
                 } else {
                     // Store half-edge id to set the twin id later on
-                    edges.insert((vert, dest), current_hedge_id);
+                    edges.insert((a, b), current_hedge_id);
                     HedgeId(usize::MAX)
                 };
 
                 dcel.add_hedge(Hedge {
-                    origin: VertexId(vert),
+                    origin: VertexId(a),
                     twin,
                     face: Some(FaceId(face)),
                     next,
                     prev,
                 });
-                dcel.get_vertex_mut(VertexId(vert)).hedge = current_hedge_id;
+                dcel.get_vertex_mut(VertexId(a)).hedge = current_hedge_id;
+
                 current_hedge_id += 1;
             }
         }
@@ -397,7 +449,7 @@ impl<'a> Iterator for ContourHedgesIterator<'a> {
 mod tests {
     use super::*;
 
-    fn two_triangles() -> (Vec<[f32; 2]>, Vec<[usize; 3]>) {
+    fn two_triangles() -> (Vec<[f32; 2]>, Vec<usize>, Vec<usize>) {
         //
         //                             Half-edges
         //   3       2        |            8
@@ -413,11 +465,15 @@ mod tests {
         //   0       1        |            6
         //
         let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
-        let polygons = vec![[0, 1, 3], [1, 2, 3]];
-        (vertices, polygons)
+        let polygons = vec![
+            0, 1, 3, // first tri
+            1, 2, 3, // second tri
+        ];
+        let offsets = vec![0, 3, 6];
+        (vertices, polygons, offsets)
     }
 
-    fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<[usize; 4]>) {
+    fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<usize>, Vec<usize>) {
         //
         //                                   Half-edges
         //         7              |           19   20
@@ -444,19 +500,26 @@ mod tests {
             [1., 2.],
             [2., 2.],
         ];
-        let polygons = vec![[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]];
-        (vertices, polygons)
+        let polygons = vec![
+            0, 1, 4, 3, // first quad
+            1, 2, 5, 4, // second quad
+            3, 4, 7, 6, // third quad
+            4, 5, 8, 7, // fourth quad
+        ];
+        let offsets = vec![0, 4, 8, 12, 16];
+        (vertices, polygons, offsets)
     }
 
     #[test]
     fn create_one_triangle_dcel_from_polygon_soup() {
         let vertices = vec![[0., 0.], [1., 0.], [0., 1.]];
-        let polygons = vec![[0, 1, 2]];
+        let polygons = vec![0, 1, 2];
+        let offsets = vec![0, 3];
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         let vertex_ids = dcel.get_face_vertex_ids(0);
-        let expected_vertex_ids = polygons[0].into_iter().map(VertexId).collect::<Vec<_>>();
+        let expected_vertex_ids = polygons.into_iter().map(VertexId).collect::<Vec<_>>();
         assert_eq!(vertex_ids, expected_vertex_ids);
         let verts = dcel.get_face_coords(0);
         assert_eq!(verts, vertices);
@@ -464,14 +527,18 @@ mod tests {
 
     #[test]
     fn create_two_triangle_dcel_from_polygon_soup() {
-        let (vertices, polygons) = two_triangles();
+        let (vertices, polygons, offsets) = two_triangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         // Check vertex ids
-        for face in [0, 1] {
+        for face in 0..2 {
             let vertex_ids = dcel.get_face_vertex_ids(face);
-            let expected_vertex_ids = polygons[face].into_iter().map(VertexId).collect::<Vec<_>>();
+            let expected_vertex_ids = polygons[(3 * face)..(3 * (face + 1))]
+                .iter()
+                .cloned()
+                .map(VertexId)
+                .collect::<Vec<_>>();
             assert_eq!(vertex_ids, expected_vertex_ids);
         }
 
@@ -524,15 +591,20 @@ mod tests {
     }
 
     #[test]
-    fn create_four_quadrangles_from_polygon_soup() {
-        let (vertices, polygons) = four_quadrangles();
+    fn create_four_quadrangle_dcel_from_polygon_soup() {
+        let (vertices, polygons, offsets) = four_quadrangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         // Check vertex ids
-        for face in [0, 1] {
+        dbg!(&dcel.faces);
+        for face in 0..4 {
             let vertex_ids = dcel.get_face_vertex_ids(face);
-            let expected_vertex_ids: Vec<_> = polygons[face].into_iter().map(VertexId).collect();
+            let expected_vertex_ids = polygons[(4 * face)..(4 * (face + 1))]
+                .iter()
+                .cloned()
+                .map(VertexId)
+                .collect::<Vec<_>>();
             assert_eq!(vertex_ids, expected_vertex_ids);
         }
 
@@ -614,9 +686,9 @@ mod tests {
     #[test]
     fn twins() {
         // Triangles
-        let (vertices, polygons) = two_triangles();
+        let (vertices, polygons, offsets) = two_triangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         // Check individual twins
         let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
@@ -637,9 +709,9 @@ mod tests {
         }
 
         // Quadrangles
-        let (vertices, polygons) = four_quadrangles();
+        let (vertices, polygons, offsets) = four_quadrangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         // Check individual twins
         let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
@@ -664,8 +736,8 @@ mod tests {
 
     #[test]
     fn bounds() {
-        let (vertices, polygons) = two_triangles();
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let (vertices, polygons, offsets) = two_triangles();
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
 
@@ -692,8 +764,9 @@ mod tests {
     #[test]
     fn points_to_the_right() {
         let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let polygons = vec![[0, 1, 2]];
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+        let polygons = vec![0, 1, 2];
+        let offsets = vec![0, 3];
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
 
         assert!(dcel.get_hedge(HedgeId(0)).points_to_the_right(&dcel));
         assert!(!dcel.get_hedge(HedgeId(1)).points_to_the_right(&dcel));
