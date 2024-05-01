@@ -3,7 +3,7 @@
 mod dcel;
 mod winding_number;
 
-use dcel::{Dcel, FaceId, Hedge, HedgeId};
+use dcel::{Dcel, FaceId, Hedge, HedgeId, Offsets};
 use indextree::Arena;
 
 struct TrapMap {
@@ -66,7 +66,7 @@ impl TrapMap {
         Self::with_dcel(dcel)
     }
 
-    fn from_polygon_soup(vertices: &[[f32; 2]], polygons: &[usize], offsets: &[usize]) -> Self {
+    fn from_polygon_soup(vertices: &[[f32; 2]], polygons: &[usize], offsets: Offsets) -> Self {
         let dcel = Dcel::from_polygon_soup(vertices, polygons, offsets);
         Self::with_dcel(dcel)
     }
@@ -223,8 +223,11 @@ mod tests {
     fn bounding_box() {
         let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let polygons = vec![0, 1, 2, 3];
-        let offsets = vec![0, 4];
-        let trap_map = TrapMap::from_polygon_soup(&vertices, &polygons, &offsets);
+        let offsets = Offsets::Implicit {
+            stride: 4,
+            n_cells: 1,
+        };
+        let trap_map = TrapMap::from_polygon_soup(&vertices, &polygons, offsets);
 
         let bbox = trap_map.bbox;
 
@@ -238,8 +241,11 @@ mod tests {
     fn add_first_edge() {
         let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let polygons = vec![0, 1, 2];
-        let offsets = vec![0, 3];
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let offsets = Offsets::Implicit {
+            stride: 3,
+            n_cells: 1,
+        };
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
         let mut trap_map = TrapMap::with_dcel(dcel);
 
         trap_map.add_edge(HedgeId(0));

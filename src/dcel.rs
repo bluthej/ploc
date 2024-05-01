@@ -131,6 +131,36 @@ struct ContourHedgesIterator<'a> {
     done: bool,
 }
 
+pub(crate) enum Offsets {
+    Implicit { stride: usize, n_cells: usize },
+    Explicit(Vec<usize>),
+}
+
+impl Offsets {
+    fn iter(&self) -> Box<dyn Iterator<Item = usize> + '_> {
+        match self {
+            Offsets::Implicit { stride, n_cells } => {
+                Box::new((0..=(stride * n_cells)).step_by(*stride))
+            }
+            Offsets::Explicit(offsets) => Box::new(offsets.iter().map(|&i| i)),
+        }
+    }
+
+    fn n_cells(&self) -> usize {
+        match self {
+            Offsets::Implicit { stride: _, n_cells } => *n_cells,
+            Offsets::Explicit(offsets) => offsets.len() - 1,
+        }
+    }
+
+    fn get(&self, idx: usize) -> Option<usize> {
+        match self {
+            Offsets::Implicit { stride, n_cells } => (idx <= *n_cells).then_some(stride * idx),
+            Offsets::Explicit(offsets) => offsets.get(idx).cloned(),
+        }
+    }
+}
+
 impl Dcel {
     pub(crate) fn new() -> Self {
         Self {
@@ -275,34 +305,37 @@ impl Dcel {
     pub(crate) fn from_polygon_soup(
         vertices: &[[f32; 2]],
         polygons: &[usize],
-        offsets: &[usize],
+        offsets: Offsets,
     ) -> Self {
         // TODO: add proper error handling (return a `Result`) with input validation:
         // - Last item of `offsets` should be the length of `polygons`
         // - Offsets should be strictly increasing
         // - The max from `polygons` should be less than `vertices.len()`
-        assert_eq!(
-            offsets
-                .last()
-                .expect("There should be at least one polygon"),
-            &polygons.len(),
-            "Last item of `offsets` should be the length on the `polygons` slice"
-        );
         assert!(
             polygons
                 .iter()
                 .max()
                 .expect("There should be at least one polygon")
-                <= &vertices.len()
+                <= &vertices.len(),
+            "The `polygons` array references vertices that do not exist"
         );
 
-        let nc = offsets.len() - 1;
+        let nc = offsets.n_cells();
+
+        assert_eq!(
+            offsets
+                .get(nc)
+                .expect("There should always be `nc+1` offset values"),
+            polygons.len(),
+            "The last offset value should be equal to the number of polygons"
+        );
+
         let mut dcel = Self::with_capacity(vertices.len(), polygons.len(), nc);
         dcel.add_vertices(vertices);
 
         let mut current_hedge_id = HedgeId(0);
         let mut edges = HashMap::with_capacity(polygons.len() * nc);
-        for (face, (&start, &end)) in offsets.iter().tuple_windows().enumerate() {
+        for (face, (start, end)) in offsets.iter().tuple_windows().enumerate() {
             assert!(start < end, "`offsets` array should be strictly increasing");
 
             dcel.add_face(Face {
@@ -449,7 +482,7 @@ impl<'a> Iterator for ContourHedgesIterator<'a> {
 mod tests {
     use super::*;
 
-    fn two_triangles() -> (Vec<[f32; 2]>, Vec<usize>, Vec<usize>) {
+    fn two_triangles() -> (Vec<[f32; 2]>, Vec<usize>, Offsets) {
         //
         //                             Half-edges
         //   3       2        |            8
@@ -469,11 +502,14 @@ mod tests {
             0, 1, 3, // first tri
             1, 2, 3, // second tri
         ];
-        let offsets = vec![0, 3, 6];
+        let offsets = Offsets::Implicit {
+            stride: 3,
+            n_cells: 2,
+        };
         (vertices, polygons, offsets)
     }
 
-    fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<usize>, Vec<usize>) {
+    fn four_quadrangles() -> (Vec<[f32; 2]>, Vec<usize>, Offsets) {
         //
         //                                   Half-edges
         //         7              |           19   20
@@ -506,7 +542,10 @@ mod tests {
             3, 4, 7, 6, // third quad
             4, 5, 8, 7, // fourth quad
         ];
-        let offsets = vec![0, 4, 8, 12, 16];
+        let offsets = Offsets::Implicit {
+            stride: 4,
+            n_cells: 4,
+        };
         (vertices, polygons, offsets)
     }
 
@@ -514,9 +553,12 @@ mod tests {
     fn create_one_triangle_dcel_from_polygon_soup() {
         let vertices = vec![[0., 0.], [1., 0.], [0., 1.]];
         let polygons = vec![0, 1, 2];
-        let offsets = vec![0, 3];
+        let offsets = Offsets::Implicit {
+            stride: 3,
+            n_cells: 1,
+        };
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         let vertex_ids = dcel.get_face_vertex_ids(0);
         let expected_vertex_ids = polygons.into_iter().map(VertexId).collect::<Vec<_>>();
@@ -529,7 +571,7 @@ mod tests {
     fn create_two_triangle_dcel_from_polygon_soup() {
         let (vertices, polygons, offsets) = two_triangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         // Check vertex ids
         for face in 0..2 {
@@ -594,7 +636,7 @@ mod tests {
     fn create_four_quadrangle_dcel_from_polygon_soup() {
         let (vertices, polygons, offsets) = four_quadrangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         // Check vertex ids
         dbg!(&dcel.faces);
@@ -688,7 +730,7 @@ mod tests {
         // Triangles
         let (vertices, polygons, offsets) = two_triangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         // Check individual twins
         let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
@@ -711,7 +753,7 @@ mod tests {
         // Quadrangles
         let (vertices, polygons, offsets) = four_quadrangles();
 
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         // Check individual twins
         let twins: Vec<_> = dcel.hedges.iter().map(|hedge| hedge.twin).collect();
@@ -737,7 +779,7 @@ mod tests {
     #[test]
     fn bounds() {
         let (vertices, polygons, offsets) = two_triangles();
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
 
@@ -765,8 +807,11 @@ mod tests {
     fn points_to_the_right() {
         let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let polygons = vec![0, 1, 2];
-        let offsets = vec![0, 3];
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, &offsets);
+        let offsets = Offsets::Implicit {
+            stride: 3,
+            n_cells: 1,
+        };
+        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
 
         assert!(dcel.get_hedge(HedgeId(0)).points_to_the_right(&dcel));
         assert!(!dcel.get_hedge(HedgeId(1)).points_to_the_right(&dcel));
