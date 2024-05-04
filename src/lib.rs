@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 
 mod dcel;
+mod mesh;
 mod winding_number;
 
 use dcel::{Dcel, FaceId, Hedge, HedgeId};
 use indextree::Arena;
+use mesh::Mesh;
 
 struct TrapMap {
     dcel: Dcel,
@@ -66,8 +68,8 @@ impl TrapMap {
         Self::with_dcel(dcel)
     }
 
-    fn from_polygon_soup<const N: usize>(vertices: &[[f32; 2]], polygons: &[[usize; N]]) -> Self {
-        let dcel = Dcel::from_polygon_soup(vertices, polygons);
+    fn from_mesh(mesh: Mesh) -> Self {
+        let dcel = Dcel::from_mesh(mesh);
         Self::with_dcel(dcel)
     }
 
@@ -190,6 +192,8 @@ impl TrapMap {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Result;
+
     use super::*;
 
     #[test]
@@ -220,10 +224,11 @@ mod tests {
     }
 
     #[test]
-    fn bounding_box() {
-        let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
-        let polygons = vec![[0, 1, 2, 3]];
-        let trap_map = TrapMap::from_polygon_soup(&vertices, &polygons);
+    fn bounding_box() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4)?;
+        let trap_map = TrapMap::from_mesh(mesh);
 
         let bbox = trap_map.bbox;
 
@@ -231,13 +236,16 @@ mod tests {
         assert!(bbox.xmax > 1.);
         assert!(bbox.ymin < 0.);
         assert!(bbox.ymax > 1.);
+
+        Ok(())
     }
 
     #[test]
-    fn add_first_edge() {
-        let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let polygons = vec![[0, 1, 2]];
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons);
+    fn add_first_edge() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let cells = vec![0, 1, 2];
+        let mesh = Mesh::with_stride(points, cells, 3)?;
+        let dcel = Dcel::from_mesh(mesh);
         let mut trap_map = TrapMap::with_dcel(dcel);
 
         trap_map.add_edge(HedgeId(0));
@@ -245,5 +253,7 @@ mod tests {
         assert_eq!(trap_map.count_traps(), 4);
         assert_eq!(trap_map.count_x_nodes(), 2);
         assert_eq!(trap_map.count_y_nodes(), 1);
+
+        Ok(())
     }
 }
