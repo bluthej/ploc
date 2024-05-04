@@ -435,6 +435,26 @@ impl<'a> Iterator for ContourHedges<'a> {
 mod tests {
     use super::*;
 
+    fn one_triangle() -> Mesh {
+        //
+        //                             Half-edges
+        //   2                |
+        //   +                |        +
+        //   |\               |        |\
+        //   | \              |        | \
+        //   |  \             |        |  \
+        //   |   \            |       4|  1\5
+        //   |    \           |        |2   \
+        //   |  0  \          |        |     \
+        //   |      \         |        |   0  \
+        //   +-------+        |        +-------+
+        //   0       1        |            3
+        //
+        let points = vec![[0., 0.], [1., 0.], [0., 1.]];
+        let cells = vec![0, 1, 2];
+        Mesh::with_stride(points, cells, 3).expect("This should be a valid input")
+    }
+
     fn two_triangles() -> Mesh {
         //
         //                             Half-edges
@@ -455,7 +475,7 @@ mod tests {
             0, 1, 3, // first tri
             1, 2, 3, // second tri
         ];
-        Mesh::with_stride(points, cells, 3)
+        Mesh::with_stride(points, cells, 3).expect("This should be a valid input")
     }
 
     fn four_quadrangles() -> Mesh {
@@ -491,25 +511,25 @@ mod tests {
             3, 4, 7, 6, // third quad
             4, 5, 8, 7, // fourth quad
         ];
-        Mesh::with_stride(points, cells, 4)
+        Mesh::with_stride(points, cells, 4).expect("This should be a valid input")
     }
 
     #[test]
-    fn create_one_triangle_dcel_from_polygon_soup() {
-        let points = vec![[0., 0.], [1., 0.], [0., 1.]];
-        let cells = vec![0, 1, 2];
+    fn create_one_triangle_dcel() {
+        let mesh = one_triangle();
 
-        let dcel = Dcel::from_mesh(Mesh::with_stride(points.clone(), cells.clone(), 3));
+        let dcel = Dcel::from_mesh(mesh);
 
         let vertex_ids = dcel.get_face_vertex_ids(0);
-        let expected_vertex_ids = cells.into_iter().map(VertexId).collect::<Vec<_>>();
+        let expected_vertex_ids = [0, 1, 2].into_iter().map(VertexId).collect::<Vec<_>>();
         assert_eq!(vertex_ids, expected_vertex_ids);
         let verts = dcel.get_face_coords(0);
-        assert_eq!(verts, points);
+        let expected_coords = vec![[0., 0.], [1., 0.], [0., 1.]];
+        assert_eq!(verts, expected_coords);
     }
 
     #[test]
-    fn create_two_triangle_dcel_from_polygon_soup() {
+    fn create_two_triangle_dcel() {
         let mesh = two_triangles();
 
         let dcel = Dcel::from_mesh(mesh);
@@ -566,7 +586,7 @@ mod tests {
     }
 
     #[test]
-    fn create_four_quadrangle_dcel_from_polygon_soup() {
+    fn create_four_quadrangle_dcel() {
         let mesh = four_quadrangles();
 
         let dcel = Dcel::from_mesh(mesh);
@@ -736,7 +756,7 @@ mod tests {
     fn points_to_the_right() {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
-        let dcel = Dcel::from_mesh(Mesh::with_stride(points, cells, 3));
+        let dcel = Dcel::from_mesh(Mesh::with_stride(points, cells, 3).unwrap());
 
         assert!(dcel.get_hedge(HedgeId(0)).points_to_the_right(&dcel));
         assert!(!dcel.get_hedge(HedgeId(1)).points_to_the_right(&dcel));
