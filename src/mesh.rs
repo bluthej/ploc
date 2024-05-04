@@ -152,6 +152,49 @@ impl Mesh {
     pub(crate) fn points(&self) -> Iter<[f32; 2]> {
         self.points.iter()
     }
+
+    pub(crate) fn grid(
+        xmin: f32,
+        xmax: f32,
+        ymin: f32,
+        ymax: f32,
+        nx: usize,
+        ny: usize,
+    ) -> Result<Self> {
+        if nx == 0 || ny == 0 {
+            return Err(anyhow!(
+                "Constructing a grid requires that both `nx` and `ny` be positive. Got {} and {}.",
+                nx,
+                ny
+            ));
+        }
+
+        let dx = (xmax - xmin) / nx as f32;
+        let x: Vec<_> = (0..=nx).map(|i| i as f32 * dx).collect();
+        let x = &x.repeat(ny + 1);
+
+        let dy = (ymax - ymin) / ny as f32;
+        let y: Vec<_> = (0..=ny)
+            .flat_map(|i| [i as f32 * dy].repeat(nx + 1))
+            .collect();
+
+        let points: Vec<_> = x.iter().zip(&y).map(|(&x, &y)| [x, y]).collect();
+        assert_eq!(points.len(), (nx + 1) * (ny + 1));
+
+        let mut cells = Vec::with_capacity(nx * ny);
+        // Keep index of the lower left corner
+        let mut llc = 0;
+        for _ in 0..ny {
+            for _ in 0..nx {
+                // Add the points in counter-clockwise order
+                cells.extend([llc, llc + 1, llc + 1 + nx + 1, llc + nx + 1]);
+                llc += 1;
+            }
+            llc += 1;
+        }
+
+        Self::with_stride(points, cells, 4)
+    }
 }
 
 #[cfg(test)]
@@ -290,5 +333,56 @@ mod tests {
         let mesh = Mesh::with_stride(Vec::new(), Vec::new(), 1);
 
         assert!(mesh.is_err());
+    }
+
+    #[test]
+    fn create_grid_with_one_quad() -> Result<()> {
+        let grid = Mesh::grid(0., 1., 0., 1., 1, 1)?;
+
+        assert_eq!(grid.cell_count(), 1);
+
+        let mut cells = grid.cells();
+        assert_eq!(cells.next(), Some([0, 1, 3, 2].as_slice()));
+        assert_eq!(cells.next(), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn create_2_by_2_grid() -> Result<()> {
+        let grid = Mesh::grid(0., 2., 0., 2., 2, 2)?;
+
+        assert_eq!(grid.cell_count(), 4);
+
+        let mut cells = grid.cells();
+        assert_eq!(cells.next(), Some([0, 1, 4, 3].as_slice()));
+        assert_eq!(cells.next(), Some([1, 2, 5, 4].as_slice()));
+        assert_eq!(cells.next(), Some([3, 4, 7, 6].as_slice()));
+        assert_eq!(cells.next(), Some([4, 5, 8, 7].as_slice()));
+        assert_eq!(cells.next(), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn create_3_by_1_grid() -> Result<()> {
+        let grid = Mesh::grid(0., 3., 0., 1., 3, 1)?;
+
+        assert_eq!(grid.cell_count(), 3);
+
+        let mut cells = grid.cells();
+        assert_eq!(cells.next(), Some([0, 1, 5, 4].as_slice()));
+        assert_eq!(cells.next(), Some([1, 2, 6, 5].as_slice()));
+        assert_eq!(cells.next(), Some([2, 3, 7, 6].as_slice()));
+        assert_eq!(cells.next(), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn grid_with_zero_nx_or_ny_returns_error() {
+        assert!(Mesh::grid(0., 10., 0., 10., 0, 10).is_err());
+        assert!(Mesh::grid(0., 10., 0., 10., 10, 0).is_err());
+        assert!(Mesh::grid(0., 10., 0., 10., 0, 0).is_err());
     }
 }
