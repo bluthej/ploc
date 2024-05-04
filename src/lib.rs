@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod dcel;
+mod mesh;
 mod winding_number;
 
 use dcel::{Dcel, FaceId, Hedge, HedgeId, Offsets};
