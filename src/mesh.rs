@@ -35,6 +35,7 @@ enum Offsets {
     Explicit(Vec<usize>),
 }
 
+/// An iterator over the cells of the `Mesh`.
 pub(crate) struct Cells<'a> {
     cells: &'a [usize],
     offsets: &'a Offsets,
@@ -115,44 +116,7 @@ impl Mesh {
         })
     }
 
-    fn check_ids(n: usize, cells: &[usize]) -> Result<()> {
-        if cells.iter().any(|&idx| idx >= n) {
-            Err(anyhow!(
-                "There are vertex ids in `cells` greater than the number of given `points` ({})",
-                n
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    pub(crate) fn cell_count(&self) -> usize {
-        match &self.offsets {
-            Offsets::Implicit(stride) => self.cells.len() / stride,
-            Offsets::Explicit(offsets) => offsets.len() - 1,
-        }
-    }
-
-    pub(crate) fn vertex_count(&self) -> usize {
-        self.points.len()
-    }
-
-    pub(crate) fn facet_count(&self) -> usize {
-        self.cells.len()
-    }
-
-    pub(crate) fn cells(&self) -> Cells<'_> {
-        Cells {
-            cells: &self.cells,
-            offsets: &self.offsets,
-            idx: 0,
-        }
-    }
-
-    pub(crate) fn points(&self) -> Iter<[f32; 2]> {
-        self.points.iter()
-    }
-
+    /// Constructs a rectilinear `Mesh`.
     pub(crate) fn grid(
         xmin: f32,
         xmax: f32,
@@ -194,6 +158,49 @@ impl Mesh {
         }
 
         Self::with_stride(points, cells, 4)
+    }
+
+    fn check_ids(n: usize, cells: &[usize]) -> Result<()> {
+        if cells.iter().any(|&idx| idx >= n) {
+            Err(anyhow!(
+                "There are vertex ids in `cells` greater than the number of given `points` ({})",
+                n
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Returns the number of cells in the `Mesh`.
+    pub(crate) fn cell_count(&self) -> usize {
+        match &self.offsets {
+            Offsets::Implicit(stride) => self.cells.len() / stride,
+            Offsets::Explicit(offsets) => offsets.len() - 1,
+        }
+    }
+
+    /// Returns the number of vertices in the `Mesh`.
+    pub(crate) fn vertex_count(&self) -> usize {
+        self.points.len()
+    }
+
+    /// Returns the number of facets in the `Mesh`.
+    pub(crate) fn facet_count(&self) -> usize {
+        self.cells.len()
+    }
+
+    /// An iterator over the cells of the `Mesh`.
+    pub(crate) fn cells(&self) -> Cells<'_> {
+        Cells {
+            cells: &self.cells,
+            offsets: &self.offsets,
+            idx: 0,
+        }
+    }
+
+    /// An iterator over the vertices of the `Mesh`.
+    pub(crate) fn points(&self) -> Iter<[f32; 2]> {
+        self.points.iter()
     }
 }
 
