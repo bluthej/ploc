@@ -1,9 +1,33 @@
+use std::slice::Iter;
+
+/// An array-based representation of a mesh.
+///
+/// The internal representation of the mesh is:
+/// - An array of vertex coordinates
+/// - An array of polygon vertex indices
+/// - An array of offsets
+///
+/// In the offsets array, the `i`th element is the first vertex id of cell number `i`. This means
+/// that all the vertices of cell `i` are defined by the range `offsets[i]..offsets[i+1]`. Note that
+/// the last element of the offsets array is the length of the polygon vertices array.
+///
+/// Note: There is an optimization for single cell type meshes whereby we don't actually store the
+/// offsets array explicitly. Instead, the stride (i.e. the number of vertices per polygon) is stored,
+/// and the offsets for cell `i` are simply `i*stride` and `(i+1)*stride`.
+///
+/// This representation of a mesh is found in several places, two of which are:
+/// - [axom](https://axom.readthedocs.io/en/develop/axom/mint/docs/sphinx/sections/mesh_types.html#mixedcelltopology)
+/// - [geogram](https://github.com/BrunoLevy/geogram/wiki/Mesh#triangulated-and-polygonal-meshes)
+/// It does have the advantage of allowing both single cell and mixed cell type topologies
+/// (see the above link to the axom documentation).
+#[derive(Debug, Clone)]
 pub(crate) struct Mesh {
     points: Vec<[f32; 2]>,
     cells: Vec<usize>,
     offsets: Offsets,
 }
 
+#[derive(Debug, Clone)]
 enum Offsets {
     Implicit(usize),
     Explicit(Vec<usize>),
@@ -36,25 +60,26 @@ impl<'a> Iterator for Cells<'a> {
 }
 
 impl Mesh {
+    /// Constructs a new `Mesh` from its array representation.
+    pub(crate) fn new(points: Vec<[f32; 2]>, cells: Vec<usize>, offsets: Vec<usize>) -> Self {
+        // TODO: check that input is valid
+        Self {
+            points,
+            cells,
+            offsets: Offsets::Explicit(offsets),
+        }
+    }
+
+    /// Constructs a new single cell type `Mesh` from its array representation and a stride.
+    ///
+    /// The offsets are stored implicitly, which leads to less memory usage, but this is only
+    /// possible for single cell type topologies.
     pub(crate) fn with_stride(points: Vec<[f32; 2]>, cells: Vec<usize>, stride: usize) -> Self {
         // TODO: check that input is valid
         Self {
             points,
             cells,
             offsets: Offsets::Implicit(stride),
-        }
-    }
-
-    pub(crate) fn with_offsets(
-        points: Vec<[f32; 2]>,
-        cells: Vec<usize>,
-        offsets: Vec<usize>,
-    ) -> Self {
-        // TODO: check that input is valid
-        Self {
-            points,
-            cells,
-            offsets: Offsets::Explicit(offsets),
         }
     }
 
@@ -65,12 +90,24 @@ impl Mesh {
         }
     }
 
+    pub(crate) fn vertex_count(&self) -> usize {
+        self.points.len()
+    }
+
+    pub(crate) fn facet_count(&self) -> usize {
+        self.cells.len()
+    }
+
     pub(crate) fn cells(&self) -> Cells<'_> {
         Cells {
             cells: &self.cells,
             offsets: &self.offsets,
             idx: 0,
         }
+    }
+
+    pub(crate) fn points(&self) -> Iter<[f32; 2]> {
+        self.points.iter()
     }
 }
 
@@ -92,7 +129,7 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [0., 1.]];
         let cells = vec![0, 1, 2];
         let offsets = vec![0, 3];
-        let mesh = Mesh::with_offsets(points, cells, offsets);
+        let mesh = Mesh::new(points, cells, offsets);
 
         assert_eq!(mesh.cell_count(), 1);
     }
@@ -102,7 +139,7 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.], [0.5, 1.5]];
         let cells = vec![0, 1, 2, 3, 3, 2, 4];
         let offsets = vec![0, 4, 7];
-        let mesh = Mesh::with_offsets(points, cells, offsets);
+        let mesh = Mesh::new(points, cells, offsets);
 
         assert_eq!(mesh.cell_count(), 2);
     }
@@ -125,7 +162,7 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.], [0.5, 1.5]];
         let cells = vec![0, 1, 2, 3, 3, 2, 4];
         let offsets = vec![0, 4, 7];
-        let mesh = Mesh::with_offsets(points, cells, offsets);
+        let mesh = Mesh::new(points, cells, offsets);
 
         let mut cells = mesh.cells();
 

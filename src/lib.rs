@@ -4,8 +4,9 @@ mod dcel;
 mod mesh;
 mod winding_number;
 
-use dcel::{Dcel, FaceId, Hedge, HedgeId, Offsets};
+use dcel::{Dcel, FaceId, Hedge, HedgeId};
 use indextree::Arena;
+use mesh::Mesh;
 
 struct TrapMap {
     dcel: Dcel,
@@ -67,8 +68,8 @@ impl TrapMap {
         Self::with_dcel(dcel)
     }
 
-    fn from_polygon_soup(vertices: &[[f32; 2]], polygons: &[usize], offsets: Offsets) -> Self {
-        let dcel = Dcel::from_polygon_soup(vertices, polygons, offsets);
+    fn from_mesh(mesh: Mesh) -> Self {
+        let dcel = Dcel::from_mesh(mesh);
         Self::with_dcel(dcel)
     }
 
@@ -222,13 +223,10 @@ mod tests {
 
     #[test]
     fn bounding_box() {
-        let vertices = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
-        let polygons = vec![0, 1, 2, 3];
-        let offsets = Offsets::Implicit {
-            stride: 4,
-            n_cells: 1,
-        };
-        let trap_map = TrapMap::from_polygon_soup(&vertices, &polygons, offsets);
+        let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4);
+        let trap_map = TrapMap::from_mesh(mesh);
 
         let bbox = trap_map.bbox;
 
@@ -240,13 +238,10 @@ mod tests {
 
     #[test]
     fn add_first_edge() {
-        let vertices = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let polygons = vec![0, 1, 2];
-        let offsets = Offsets::Implicit {
-            stride: 3,
-            n_cells: 1,
-        };
-        let dcel = Dcel::from_polygon_soup(&vertices, &polygons, offsets);
+        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let cells = vec![0, 1, 2];
+        let mesh = Mesh::with_stride(points, cells, 3);
+        let dcel = Dcel::from_mesh(mesh);
         let mut trap_map = TrapMap::with_dcel(dcel);
 
         trap_map.add_edge(HedgeId(0));
