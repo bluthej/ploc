@@ -281,7 +281,7 @@ impl Dcel {
         FaceId(id)
     }
 
-    /// Constructs a new `Dcel` from a `Mesh`.
+    /// Constructs a new [`Dcel`] from a [`Mesh`].
     pub(crate) fn from_mesh(mesh: Mesh) -> Self {
         let nv = mesh.vertex_count();
         let nc = mesh.cell_count();

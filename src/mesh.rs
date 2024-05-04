@@ -35,7 +35,7 @@ enum Offsets {
     Explicit(Vec<usize>),
 }
 
-/// An iterator over the cells of the `Mesh`.
+/// An iterator over the cells of the [`Mesh`].
 pub(crate) struct Cells<'a> {
     cells: &'a [usize],
     offsets: &'a Offsets,
@@ -63,7 +63,7 @@ impl<'a> Iterator for Cells<'a> {
 }
 
 impl Mesh {
-    /// Constructs a new `Mesh` from its array representation.
+    /// Constructs a new [`Mesh`] from its array representation.
     pub(crate) fn new(
         points: Vec<[f32; 2]>,
         cells: Vec<usize>,
@@ -86,7 +86,7 @@ impl Mesh {
         })
     }
 
-    /// Constructs a new single cell type `Mesh` from its array representation and a stride.
+    /// Constructs a new single cell type [`Mesh`] from its array representation and a stride.
     ///
     /// The offsets are stored implicitly, which leads to less memory usage, but this is only
     /// possible for single cell type topologies.
@@ -116,7 +116,7 @@ impl Mesh {
         })
     }
 
-    /// Constructs a rectilinear `Mesh`.
+    /// Constructs a rectilinear [`Mesh`].
     pub(crate) fn grid(
         xmin: f32,
         xmax: f32,
@@ -171,7 +171,7 @@ impl Mesh {
         }
     }
 
-    /// Returns the number of cells in the `Mesh`.
+    /// Returns the number of cells in the [`Mesh`].
     pub(crate) fn cell_count(&self) -> usize {
         match &self.offsets {
             Offsets::Implicit(stride) => self.cells.len() / stride,
@@ -179,17 +179,17 @@ impl Mesh {
         }
     }
 
-    /// Returns the number of vertices in the `Mesh`.
+    /// Returns the number of vertices in the [`Mesh`].
     pub(crate) fn vertex_count(&self) -> usize {
         self.points.len()
     }
 
-    /// Returns the number of facets in the `Mesh`.
+    /// Returns the number of facets in the [`Mesh`].
     pub(crate) fn facet_count(&self) -> usize {
         self.cells.len()
     }
 
-    /// An iterator over the cells of the `Mesh`.
+    /// An iterator over the cells of the [`Mesh`].
     pub(crate) fn cells(&self) -> Cells<'_> {
         Cells {
             cells: &self.cells,
@@ -198,7 +198,7 @@ impl Mesh {
         }
     }
 
-    /// An iterator over the vertices of the `Mesh`.
+    /// An iterator over the vertices of the [`Mesh`].
     pub(crate) fn points(&self) -> Iter<[f32; 2]> {
         self.points.iter()
     }

@@ -10,7 +10,7 @@ use std::slice::Iter;
 ///
 /// These kinds of graphs are generally implemented using pointers, but this is not very practical
 /// or idiomatic in Rust, so here it is implemented using an arena. This means that it is actually
-/// backed by a simple `Vec`, and we keep track of the nodes using `usize`s. This is not the best
+/// backed by a simple [`Vec`], and we keep track of the nodes using [`usize`]s. This is not the best
 /// approach when you need to be able to efficiently remove nodes from the arena, but in the present
 /// case we never actually remove nodes.
 ///
