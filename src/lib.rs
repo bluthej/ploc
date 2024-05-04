@@ -1,17 +1,17 @@
 #![allow(dead_code)]
 
+mod dag;
 mod dcel;
 mod mesh;
 mod winding_number;
 
+use dag::Dag;
 use dcel::{Dcel, FaceId, Hedge, HedgeId};
-use indextree::Arena;
 use mesh::Mesh;
 
 struct TrapMap {
     dcel: Dcel,
-    tree: Arena<Node>,
-    root: indextree::NodeId,
+    dag: Dag<Node>,
     bbox: BoundingBox,
 }
 
@@ -74,67 +74,53 @@ impl TrapMap {
     }
 
     fn with_dcel(dcel: Dcel) -> Self {
-        let mut tree = Arena::new();
+        let mut dag = Dag::new();
 
         let mut dcel = dcel;
         let top = dcel.add_hedge(Hedge::new());
         let bottom = dcel.add_hedge(Hedge::new());
 
-        let root = tree.new_node(Node::Trap(Trapezoid { top, bottom }));
+        dag.add(Node::Trap(Trapezoid { top, bottom }));
 
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
         let bbox = BoundingBox::from_bounds(xmin, xmax, ymin, ymax);
 
-        Self {
-            dcel,
-            tree,
-            root,
-            bbox,
-        }
+        Self { dcel, dag, bbox }
     }
 
     fn count_x_nodes(&self) -> usize {
-        let mut count = 0;
-        for node in self.tree.iter() {
-            if matches!(node.get(), Node::X) {
-                count += 1;
-            }
-        }
-        count
+        self.dag
+            .iter()
+            .filter(|&node| matches!(node.data, Node::X))
+            .count()
     }
 
     fn count_y_nodes(&self) -> usize {
-        let mut count = 0;
-        for node in self.tree.iter() {
-            if matches!(node.get(), Node::Y) {
-                count += 1;
-            }
-        }
-        count
+        self.dag
+            .iter()
+            .filter(|&node| matches!(node.data, Node::Y))
+            .count()
     }
 
     fn count_traps(&self) -> usize {
-        let mut count = 0;
-        for node in self.tree.iter() {
-            if matches!(node.get(), Node::Trap(..)) {
-                count += 1;
-            }
-        }
-        count
+        self.dag
+            .iter()
+            .filter(|&node| matches!(node.data, Node::Trap(..)))
+            .count()
     }
 
     fn count_nodes(&self) -> (usize, usize, usize) {
-        let mut trap_count = 0;
-        let mut x_node_count = 0;
-        let mut y_node_count = 0;
-        for node in self.tree.iter() {
-            match node.get() {
-                Node::X => x_node_count += 1,
-                Node::Y => y_node_count += 1,
-                Node::Trap(_) => trap_count += 1,
-            }
-        }
-        (x_node_count, y_node_count, trap_count)
+        self.dag.iter().fold(
+            (0, 0, 0),
+            |(mut x_count, mut y_count, mut trap_count), node| {
+                match node.data {
+                    Node::X => x_count += 1,
+                    Node::Y => y_count += 1,
+                    Node::Trap(..) => trap_count += 1,
+                };
+                (x_count, y_count, trap_count)
+            },
+        )
     }
 
     fn print_stats(&self) {
@@ -150,15 +136,10 @@ impl TrapMap {
         self.dcel.get_hedge(trap.bottom).face
     }
 
-    fn find_trapezoid(&self, _point: &[f32; 2]) -> (indextree::NodeId, &Trapezoid) {
-        let node_id = self.root;
+    fn find_trapezoid(&self, _point: &[f32; 2]) -> (usize, &Trapezoid) {
+        let node_id = 0;
         loop {
-            match self
-                .tree
-                .get(node_id)
-                .expect("Node ids should always exist")
-                .get()
-            {
+            match &self.dag.get(node_id).unwrap().data {
                 Node::Trap(trapezoid) => return (node_id, trapezoid),
                 _ => todo!("Handle X and Y nodes later"),
             }
@@ -167,25 +148,25 @@ impl TrapMap {
 
     fn add_edge(&mut self, hedge_id: HedgeId) {
         self.print_stats();
+
         let hedge = self.dcel.get_hedge(hedge_id);
         let p = self.dcel.get_vertex(hedge.origin);
+
         let (old_nid, _old_trap) = self.find_trapezoid(&p.coords);
 
-        let p_nid = self.tree.new_node(Node::X);
-        old_nid.prepend(p_nid, &mut self.tree);
-        let q_nid = p_nid.append_value(Node::X, &mut self.tree);
-
-        let s_nid = q_nid.append_value(Node::Y, &mut self.tree);
+        let p_nid = self.dag.insert_before(Node::X, old_nid).unwrap();
+        let q_nid = self.dag.append_to(Node::X, p_nid).unwrap();
+        let s_nid = self.dag.append_to(Node::Y, q_nid).unwrap();
         let b_trap = Trapezoid {
             top: HedgeId(0),
             bottom: HedgeId(0),
         };
         let c_trap = b_trap.clone();
         let d_trap = b_trap.clone();
-        let _b_nid = q_nid.append_value(Node::Trap(b_trap), &mut self.tree);
+        let _b_nid = self.dag.append_to(Node::Trap(b_trap), q_nid);
+        let _c_nid = self.dag.append_to(Node::Trap(c_trap), s_nid);
+        let _d_nid = self.dag.append_to(Node::Trap(d_trap), s_nid);
 
-        let _c_nid = s_nid.append_value(Node::Trap(c_trap), &mut self.tree);
-        let _d_nid = s_nid.append_value(Node::Trap(d_trap), &mut self.tree);
         self.print_stats();
     }
 }
