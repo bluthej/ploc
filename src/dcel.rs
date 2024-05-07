@@ -144,7 +144,7 @@ impl Offsets {
             Offsets::Implicit { stride, n_cells } => {
                 Box::new((0..=(stride * n_cells)).step_by(*stride))
             }
-            Offsets::Explicit(offsets) => Box::new(offsets.iter().map(|&i| i)),
+            Offsets::Explicit(offsets) => Box::new(offsets.iter().copied()),
         }
     }
 
@@ -263,7 +263,7 @@ impl Dcel {
     {
         for coords in vertices.into_iter() {
             self.vertices.push(Vertex {
-                coords: coords.clone(),
+                coords: *coords,
                 hedge: HedgeId(usize::MAX),
             });
         }
