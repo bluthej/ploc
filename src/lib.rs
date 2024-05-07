@@ -30,10 +30,10 @@ struct Trapezoid {
 }
 
 struct BoundingBox {
-    xmin: f32,
-    xmax: f32,
-    ymin: f32,
-    ymax: f32,
+    xmin: f64,
+    xmax: f64,
+    ymin: f64,
+    ymax: f64,
 }
 
 impl BoundingBox {
@@ -41,7 +41,7 @@ impl BoundingBox {
         Self::default()
     }
 
-    fn from_bounds(xmin: f32, xmax: f32, ymin: f32, ymax: f32) -> Self {
+    fn from_bounds(xmin: f64, xmax: f64, ymin: f64, ymax: f64) -> Self {
         Self {
             xmin: xmin - 0.1,
             xmax: xmax + 0.1,
@@ -131,12 +131,12 @@ impl TrapMap {
         );
     }
 
-    fn find_face(&self, point: &[f32; 2]) -> Option<FaceId> {
+    fn find_face(&self, point: &[f64; 2]) -> Option<FaceId> {
         let (_, trap) = self.find_trapezoid(point);
         self.dcel.get_hedge(trap.bottom).face
     }
 
-    fn find_trapezoid(&self, _point: &[f32; 2]) -> (usize, &Trapezoid) {
+    fn find_trapezoid(&self, _point: &[f64; 2]) -> (usize, &Trapezoid) {
         let node_id = 0;
         loop {
             match &self.dag.get(node_id).unwrap().data {
