@@ -171,8 +171,37 @@ impl TrapMap {
     }
 }
 
+struct RectilinearLocator {
+    x: Vec<f64>,
+    y: Vec<f64>,
+}
+
+impl RectilinearLocator {
+    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Self {
+        // TODO: check that `x` and `y` are ordered
+        Self { x, y }
+    }
+
+    pub fn locate(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
+        let mut locations = Vec::with_capacity(points.len());
+        let nx = self.x.len();
+        let ny = self.y.len();
+        for [xp, yp] in points {
+            let x_idx = self.x.partition_point(|x| x < xp);
+            let y_idx = self.y.partition_point(|y| y < yp);
+            if x_idx > 0 && x_idx < nx && y_idx > 0 && y_idx < ny {
+                locations.push(Some((nx - 1) * (y_idx - 1) + x_idx - 1))
+            } else {
+                locations.push(None)
+            };
+        }
+        locations
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::winding_number::Point;
     use anyhow::Result;
 
     use super::*;
@@ -236,5 +265,26 @@ mod tests {
         assert_eq!(trap_map.count_y_nodes(), 1);
 
         Ok(())
+    }
+
+    #[test]
+    fn rectilinear_locator_simple_test() {
+        let x = vec![0., 1., 2.];
+        let y = vec![0., 1., 2.];
+        let points = vec![[0.5, 0.5], [1.5, 0.5], [0.5, 1.5], [1.5, 1.5], [2.5, 2.5]];
+        let locator = RectilinearLocator::new(x, y);
+
+        let locations = locator.locate(&points);
+
+        assert_eq!(locations, vec![Some(0), Some(1), Some(2), Some(3), None]);
+
+        // Check results using the winding number
+        let mesh = Mesh::grid(0., 2., 0., 2., 2, 2).unwrap();
+        for (point, idx) in points.iter().map(Point::from).zip(&locations) {
+            if let Some(idx) = idx {
+                let cell = mesh.cell_vertices(*idx).cloned();
+                assert!(point.is_inside(cell));
+            }
+        }
     }
 }

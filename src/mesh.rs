@@ -62,6 +62,40 @@ impl<'a> Iterator for Cells<'a> {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct CellVertices<'a> {
+    points: &'a [[f64; 2]],
+    cells: &'a [usize],
+    start: usize,
+    end: usize,
+    idx: usize,
+}
+
+impl<'a> Iterator for CellVertices<'a> {
+    type Item = &'a [f64; 2];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.end {
+            None
+        } else {
+            let res = &self.points[self.cells[self.idx]];
+            self.idx += 1;
+            Some(res)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = self.end - self.idx;
+        (n, Some(n))
+    }
+}
+
+impl<'a> ExactSizeIterator for CellVertices<'a> {
+    fn len(&self) -> usize {
+        self.size_hint().0
+    }
+}
+
 impl Mesh {
     /// Constructs a new [`Mesh`] from its array representation.
     pub(crate) fn new(
@@ -201,6 +235,26 @@ impl Mesh {
     /// An iterator over the vertices of the [`Mesh`].
     pub(crate) fn points(&self) -> Iter<[f64; 2]> {
         self.points.iter()
+    }
+
+    /// An iterator over the vertices of a particular cell.
+    pub(crate) fn cell_vertices(&self, idx: usize) -> CellVertices {
+        let (start, end) = match &self.offsets {
+            Offsets::Implicit(stride) if idx * stride < self.cells.len() => {
+                (idx * stride, (idx + 1) * stride)
+            }
+            Offsets::Explicit(offsets) if idx + 1 < offsets.len() => {
+                (offsets[idx], offsets[idx + 1])
+            }
+            _ => (0, 0),
+        };
+        CellVertices {
+            points: &self.points,
+            cells: &self.cells,
+            start,
+            end,
+            idx: start,
+        }
     }
 }
 
