@@ -133,36 +133,6 @@ struct ContourHedges<'a> {
     done: bool,
 }
 
-pub(crate) enum Offsets {
-    Implicit { stride: usize, n_cells: usize },
-    Explicit(Vec<usize>),
-}
-
-impl Offsets {
-    fn iter(&self) -> Box<dyn Iterator<Item = usize> + '_> {
-        match self {
-            Offsets::Implicit { stride, n_cells } => {
-                Box::new((0..=(stride * n_cells)).step_by(*stride))
-            }
-            Offsets::Explicit(offsets) => Box::new(offsets.iter().copied()),
-        }
-    }
-
-    fn n_cells(&self) -> usize {
-        match self {
-            Offsets::Implicit { stride: _, n_cells } => *n_cells,
-            Offsets::Explicit(offsets) => offsets.len() - 1,
-        }
-    }
-
-    fn get(&self, idx: usize) -> Option<usize> {
-        match self {
-            Offsets::Implicit { stride, n_cells } => (idx <= *n_cells).then_some(stride * idx),
-            Offsets::Explicit(offsets) => offsets.get(idx).cloned(),
-        }
-    }
-}
-
 impl Dcel {
     pub(crate) fn new() -> Self {
         Self {
