@@ -2,9 +2,36 @@ use itertools::Itertools;
 
 /// A point of the 2D plane.
 #[derive(Debug, Clone, Copy)]
-struct Point {
+pub(crate) struct Point {
     x: f64,
     y: f64,
+}
+
+impl From<&Point> for [f64; 2] {
+    fn from(val: &Point) -> Self {
+        [val.x, val.y]
+    }
+}
+
+impl From<Point> for [f64; 2] {
+    fn from(val: Point) -> Self {
+        (&val).into()
+    }
+}
+
+impl From<&[f64; 2]> for Point {
+    fn from(value: &[f64; 2]) -> Self {
+        Self {
+            x: value[0],
+            y: value[1],
+        }
+    }
+}
+
+impl From<[f64; 2]> for Point {
+    fn from(value: [f64; 2]) -> Self {
+        Self::from(&value)
+    }
 }
 
 /// Positioning of a `Point` with respect to a line.
@@ -17,9 +44,14 @@ enum Positioning {
 
 impl Point {
     /// Test if a point is Left|On|Right of an infinite 2D line defined by two points.
-    fn position(&self, p1: &Point, p2: &Point) -> Positioning {
-        let p0 = self;
-        match ((p2.x - p1.x) * (p0.y - p1.y) - (p0.x - p1.x) * (p2.y - p1.y)).total_cmp(&0.) {
+    fn position<T>(&self, p1: T, p2: T) -> Positioning
+    where
+        T: Into<[f64; 2]>,
+    {
+        let Self { x: x0, y: y0 } = self;
+        let [x1, y1] = p1.into();
+        let [x2, y2] = p2.into();
+        match ((x2 - x1) * (y0 - y1) - (x0 - x1) * (y2 - y1)).total_cmp(&0.) {
             std::cmp::Ordering::Greater => Positioning::Left,
             std::cmp::Ordering::Less => Positioning::Right,
             std::cmp::Ordering::Equal => Positioning::On,
@@ -34,12 +66,21 @@ impl Point {
     /// - `< 0` if the [`Point`] is inside the polygon and the polygon "winds" at least once around the [`Point`] clockwise
     ///
     /// For more information, see <https://web.archive.org/web/20130126163405/http://geomalgorithms.com/a03-_inclusion.html>.
-    fn wn(&self, poly: &[Point]) -> isize {
+    fn wn<I>(&self, poly: I) -> isize
+    where
+        I: IntoIterator,
+        <I as IntoIterator>::IntoIter: Clone,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+        <I as IntoIterator>::Item: Into<[f64; 2]>,
+        <I as IntoIterator>::Item: Clone,
+    {
         let mut wn = 0;
-        for (a, b) in poly.iter().circular_tuple_windows() {
-            if a.y <= self.y {
+        for (a, b) in poly.into_iter().circular_tuple_windows() {
+            let [_, ya] = a.clone().into();
+            let [_, yb] = b.clone().into();
+            if ya <= self.y {
                 // `a` is below self
-                if b.y > self.y {
+                if yb > self.y {
                     // an upward crossing
                     if matches!(self.position(a, b), Positioning::Left) {
                         wn += 1;
@@ -47,7 +88,7 @@ impl Point {
                 }
             } else {
                 // `a` is above self
-                if b.y <= self.y {
+                if yb <= self.y {
                     // a downward crossing
                     if matches!(self.position(a, b), Positioning::Right) {
                         wn -= 1;
@@ -56,6 +97,17 @@ impl Point {
             }
         }
         wn
+    }
+
+    pub(crate) fn is_inside<I>(&self, poly: I) -> bool
+    where
+        I: IntoIterator,
+        <I as IntoIterator>::IntoIter: Clone,
+        <I as IntoIterator>::IntoIter: ExactSizeIterator,
+        <I as IntoIterator>::Item: Into<[f64; 2]>,
+        <I as IntoIterator>::Item: Clone,
+    {
+        self.wn(poly) != 0
     }
 }
 
@@ -114,6 +166,26 @@ mod tests {
         assert_eq!(p4.wn(&poly), 1); // Bottom edges are included
         assert_eq!(p5.wn(&poly), 0); // Right edges are not included
         assert_eq!(p6.wn(&poly), 0); // Top edges are not included
+    }
+
+    #[test]
+    fn winding_number_square_with_array() {
+        let poly = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+
+        let p0 = Point { x: 0.5, y: 0.5 };
+        let p1 = Point { x: 1.5, y: 0.5 };
+        let p2 = Point { x: 0.5, y: 1.5 };
+        let p3 = Point { x: 0., y: 0.5 };
+        let p4 = Point { x: 0.5, y: 0. };
+        let p5 = Point { x: 1.0, y: 0.5 };
+        let p6 = Point { x: 0.5, y: 1. };
+        assert_eq!(p0.wn(poly), 1);
+        assert_eq!(p1.wn(poly), 0);
+        assert_eq!(p2.wn(poly), 0);
+        assert_eq!(p3.wn(poly), 1); // Left edges are included
+        assert_eq!(p4.wn(poly), 1); // Bottom edges are included
+        assert_eq!(p5.wn(poly), 0); // Right edges are not included
+        assert_eq!(p6.wn(poly), 0); // Top edges are not included
     }
 
     #[test]

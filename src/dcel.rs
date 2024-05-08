@@ -20,7 +20,7 @@ pub(crate) struct Dcel {
 
 #[derive(Debug)]
 pub(crate) struct Vertex {
-    pub(crate) coords: [f32; 2],
+    pub(crate) coords: [f64; 2],
     hedge: HedgeId,
 }
 
@@ -28,7 +28,7 @@ trait IsRightOf<Rhs = Self> {
     fn is_right_of(&self, other: &Rhs) -> bool;
 }
 
-impl IsRightOf<Vertex> for [f32; 2] {
+impl IsRightOf<Vertex> for [f64; 2] {
     fn is_right_of(&self, other: &Vertex) -> bool {
         self > &other.coords
     }
@@ -152,11 +152,11 @@ impl Dcel {
         }
     }
 
-    pub(crate) fn get_bounds(&self) -> [f32; 4] {
-        let mut xmin = f32::MAX;
-        let mut xmax = f32::MIN;
-        let mut ymin = f32::MAX;
-        let mut ymax = f32::MIN;
+    pub(crate) fn get_bounds(&self) -> [f64; 4] {
+        let mut xmin = f64::MAX;
+        let mut xmax = f64::MIN;
+        let mut ymin = f64::MAX;
+        let mut ymax = f64::MIN;
         for vertex in &self.vertices {
             let [x, y] = vertex.coords;
             if x < xmin {
@@ -229,7 +229,7 @@ impl Dcel {
 
     fn add_vertices<'a, I>(&mut self, vertices: I)
     where
-        I: IntoIterator<Item = &'a [f32; 2]>,
+        I: IntoIterator<Item = &'a [f64; 2]>,
     {
         for coords in vertices.into_iter() {
             self.vertices.push(Vertex {
@@ -346,7 +346,7 @@ impl Dcel {
         dcel
     }
 
-    fn get_face_coords(&self, face: usize) -> Vec<[f32; 2]> {
+    fn get_face_coords(&self, face: usize) -> Vec<[f64; 2]> {
         self.face_vertices(face).map(|vert| vert.coords).collect()
     }
 

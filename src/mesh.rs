@@ -24,7 +24,7 @@ use anyhow::{anyhow, Result};
 /// (see the above link to the axom documentation).
 #[derive(Debug, Clone)]
 pub(crate) struct Mesh {
-    points: Vec<[f32; 2]>,
+    points: Vec<[f64; 2]>,
     cells: Vec<usize>,
     offsets: Offsets,
 }
@@ -62,10 +62,44 @@ impl<'a> Iterator for Cells<'a> {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct CellVertices<'a> {
+    points: &'a [[f64; 2]],
+    cells: &'a [usize],
+    start: usize,
+    end: usize,
+    idx: usize,
+}
+
+impl<'a> Iterator for CellVertices<'a> {
+    type Item = &'a [f64; 2];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.end {
+            None
+        } else {
+            let res = &self.points[self.cells[self.idx]];
+            self.idx += 1;
+            Some(res)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = self.end - self.idx;
+        (n, Some(n))
+    }
+}
+
+impl<'a> ExactSizeIterator for CellVertices<'a> {
+    fn len(&self) -> usize {
+        self.size_hint().0
+    }
+}
+
 impl Mesh {
     /// Constructs a new [`Mesh`] from its array representation.
     pub(crate) fn new(
-        points: Vec<[f32; 2]>,
+        points: Vec<[f64; 2]>,
         cells: Vec<usize>,
         offsets: Vec<usize>,
     ) -> Result<Self> {
@@ -91,7 +125,7 @@ impl Mesh {
     /// The offsets are stored implicitly, which leads to less memory usage, but this is only
     /// possible for single cell type topologies.
     pub(crate) fn with_stride(
-        points: Vec<[f32; 2]>,
+        points: Vec<[f64; 2]>,
         cells: Vec<usize>,
         stride: usize,
     ) -> Result<Self> {
@@ -118,10 +152,10 @@ impl Mesh {
 
     /// Constructs a rectilinear [`Mesh`].
     pub(crate) fn grid(
-        xmin: f32,
-        xmax: f32,
-        ymin: f32,
-        ymax: f32,
+        xmin: f64,
+        xmax: f64,
+        ymin: f64,
+        ymax: f64,
         nx: usize,
         ny: usize,
     ) -> Result<Self> {
@@ -133,13 +167,13 @@ impl Mesh {
             ));
         }
 
-        let dx = (xmax - xmin) / nx as f32;
-        let x: Vec<_> = (0..=nx).map(|i| i as f32 * dx).collect();
+        let dx = (xmax - xmin) / nx as f64;
+        let x: Vec<_> = (0..=nx).map(|i| i as f64 * dx).collect();
         let x = &x.repeat(ny + 1);
 
-        let dy = (ymax - ymin) / ny as f32;
+        let dy = (ymax - ymin) / ny as f64;
         let y: Vec<_> = (0..=ny)
-            .flat_map(|i| [i as f32 * dy].repeat(nx + 1))
+            .flat_map(|i| [i as f64 * dy].repeat(nx + 1))
             .collect();
 
         let points: Vec<_> = x.iter().zip(&y).map(|(&x, &y)| [x, y]).collect();
@@ -199,8 +233,28 @@ impl Mesh {
     }
 
     /// An iterator over the vertices of the [`Mesh`].
-    pub(crate) fn points(&self) -> Iter<[f32; 2]> {
+    pub(crate) fn points(&self) -> Iter<[f64; 2]> {
         self.points.iter()
+    }
+
+    /// An iterator over the vertices of a particular cell.
+    pub(crate) fn cell_vertices(&self, idx: usize) -> CellVertices {
+        let (start, end) = match &self.offsets {
+            Offsets::Implicit(stride) if idx * stride < self.cells.len() => {
+                (idx * stride, (idx + 1) * stride)
+            }
+            Offsets::Explicit(offsets) if idx + 1 < offsets.len() => {
+                (offsets[idx], offsets[idx + 1])
+            }
+            _ => (0, 0),
+        };
+        CellVertices {
+            points: &self.points,
+            cells: &self.cells,
+            start,
+            end,
+            idx: start,
+        }
     }
 }
 
