@@ -67,15 +67,15 @@ impl Default for BoundingBox {
 impl TrapMap {
     fn new() -> Self {
         let dcel = Dcel::new();
-        Self::with_dcel(dcel)
+        Self::from_dcel(dcel)
     }
 
     fn from_mesh(mesh: Mesh) -> Self {
         let dcel = Dcel::from_mesh(mesh);
-        Self::with_dcel(dcel)
+        Self::from_dcel(dcel)
     }
 
-    fn with_dcel(dcel: Dcel) -> Self {
+    fn from_dcel(dcel: Dcel) -> Self {
         let mut dag = Dag::new();
 
         let mut dcel = dcel;
@@ -90,28 +90,28 @@ impl TrapMap {
         Self { dcel, dag, bbox }
     }
 
-    fn count_x_nodes(&self) -> usize {
+    fn x_node_count(&self) -> usize {
         self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::X))
             .count()
     }
 
-    fn count_y_nodes(&self) -> usize {
+    fn y_node_count(&self) -> usize {
         self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::Y))
             .count()
     }
 
-    fn count_traps(&self) -> usize {
+    fn trap_count(&self) -> usize {
         self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::Trap(..)))
             .count()
     }
 
-    fn count_nodes(&self) -> (usize, usize, usize) {
+    fn node_count(&self) -> (usize, usize, usize) {
         self.dag.iter().fold(
             (0, 0, 0),
             |(mut x_count, mut y_count, mut trap_count), node| {
@@ -126,10 +126,10 @@ impl TrapMap {
     }
 
     fn print_stats(&self) {
-        let (x_node_count, y_node_count, trap_count) = self.count_nodes();
+        let (x_node_count, y_node_count, trap_count) = self.node_count();
         println!(
             "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
-            x_node_count, y_node_count, trap_count
+            x_node_count, y_node_count, trap_count,
         );
     }
 
@@ -234,15 +234,15 @@ mod tests {
     fn initialize_empty_trapezoidal_map() {
         let trap_map = TrapMap::new();
 
-        assert_eq!(trap_map.count_traps(), 1);
+        assert_eq!(trap_map.trap_count(), 1);
     }
 
     #[test]
     fn find_trap_in_empty_trapezoidal_map() {
         let trap_map = TrapMap::new();
-        assert_eq!(trap_map.count_traps(), 1);
-        assert_eq!(trap_map.count_x_nodes(), 0);
-        assert_eq!(trap_map.count_y_nodes(), 0);
+        assert_eq!(trap_map.trap_count(), 1);
+        assert_eq!(trap_map.x_node_count(), 0);
+        assert_eq!(trap_map.y_node_count(), 0);
 
         let point = [0., 0.];
         let _trap = trap_map.find_trapezoid(&point);
@@ -280,13 +280,13 @@ mod tests {
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
         let dcel = Dcel::from_mesh(mesh);
-        let mut trap_map = TrapMap::with_dcel(dcel);
+        let mut trap_map = TrapMap::from_dcel(dcel);
 
         trap_map.add_edge(HedgeId(0));
 
-        assert_eq!(trap_map.count_traps(), 4);
-        assert_eq!(trap_map.count_x_nodes(), 2);
-        assert_eq!(trap_map.count_y_nodes(), 1);
+        assert_eq!(trap_map.trap_count(), 4);
+        assert_eq!(trap_map.x_node_count(), 2);
+        assert_eq!(trap_map.y_node_count(), 1);
 
         Ok(())
     }
