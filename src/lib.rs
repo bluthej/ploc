@@ -173,13 +173,17 @@ impl TrapMap {
     }
 }
 
+/// A point locator for a rectilinear grid.
 struct RectilinearLocator {
     x: Vec<f64>,
     y: Vec<f64>,
 }
 
 impl RectilinearLocator {
-    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Self> {
+    /// Constructs a new `RectilinearLocator`.
+    ///
+    /// Fails if either the `x` or `y` vector is not sorted and strictly increasing.
+    fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Self> {
         for z in [&x, &y] {
             if z.iter().tuple_windows().any(|(z1, z2)| z1 >= z2) {
                 return Err(anyhow!("The input values should be strictly increasing."));
@@ -189,7 +193,18 @@ impl RectilinearLocator {
         Ok(Self { x, y })
     }
 
-    pub fn locate(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
+    /// Find the cells of the rectilinear grid that contain the input points.
+    ///
+    /// A point which lies outside of all the mesh cells is indicated by a `None` value.
+    ///
+    /// The location is performed with two binary searches: one on the x-axis and one on the y-axis.
+    ///
+    /// The returned cell index is computed assuming that the mesh cells are numbered first from
+    /// left to right, and then from bottom to top, i.e. cell `0` is always the bottom-left corner,
+    /// then the next cell is its right neighbor if it exists or its top neighbor otherwise.
+    /// This continues until the end of the bottom row is reached, and then we continue to the
+    /// second row.
+    fn locate(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
         let mut locations = Vec::with_capacity(points.len());
         let nx = self.x.len();
         let ny = self.y.len();
