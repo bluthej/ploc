@@ -290,6 +290,102 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rectilinear_locator_edge_cases() {
+        let x = vec![0., 1., 2.];
+        let y = vec![0., 1., 2.];
+        let points = vec![
+            // Vertical edges
+            [0., 0.5],
+            [1., 0.5],
+            [2., 0.5], // Right edge counts as outside
+            [0., 1.5],
+            [1., 1.5],
+            [2., 1.5], // Right edge counts as outside
+            // Horizontal edges
+            [0.5, 0.],
+            [0.5, 1.],
+            [0.5, 2.], // Top edge counts as outside
+            [1.5, 0.],
+            [1.5, 1.],
+            [1.5, 2.], // Top edge counts as outside
+        ];
+        let locator = RectilinearLocator::new(x, y);
+
+        let locations = locator.locate(&points);
+
+        assert_eq!(
+            locations,
+            vec![
+                Some(0),
+                Some(1),
+                None,
+                Some(2),
+                Some(3),
+                None,
+                Some(0),
+                Some(2),
+                None,
+                Some(1),
+                Some(3),
+                None
+            ]
+        );
+
+        // Check results using the winding number
+        let mesh = Mesh::grid(0., 2., 0., 2., 2, 2).unwrap();
+        for (point, idx) in points.iter().map(Point::from).zip(&locations) {
+            if let Some(idx) = idx {
+                let cell = mesh.cell_vertices(*idx).cloned();
+                assert!(point.is_inside(cell));
+            }
+        }
+    }
+
+    #[test]
+    fn rectilinear_locator_corner_cases() {
+        let x = vec![0., 1., 2.];
+        let y = vec![0., 1., 2.];
+        let points = vec![
+            [0., 0.],
+            [1., 0.],
+            [2., 0.], // Right edge counts as outside
+            [0., 1.],
+            [1., 1.],
+            [2., 1.], // Right edge counts as outside
+            [0., 2.], // Top edge counts as outside
+            [1., 2.], // Top edge counts as outside
+            [2., 2.], // Top/Right edge counts as outside
+        ];
+        let locator = RectilinearLocator::new(x, y);
+
+        let locations = locator.locate(&points);
+
+        assert_eq!(
+            locations,
+            vec![
+                Some(0),
+                Some(1),
+                None,
+                Some(2),
+                Some(3),
+                None,
+                None,
+                None,
+                None
+            ]
+        );
+
+        // Check results using the winding number
+        let mesh = Mesh::grid(0., 2., 0., 2., 2, 2).unwrap();
+        for (point, idx) in points.iter().map(Point::from).zip(&locations) {
+            if let Some(idx) = idx {
+                let cell = mesh.cell_vertices(*idx).cloned();
+                assert!(point.is_inside(cell));
+            }
+        }
+    }
+
     prop_compose! {
         fn coords_in_range(xmin: f64, xmax: f64, ymin: f64, ymax: f64)
                           (x in xmin..xmax, y in ymin..ymax) -> [f64; 2] {
@@ -301,7 +397,7 @@ mod tests {
     fn rectilinear_locator_proptest() {
         let (xmin, xmax) = (0., 10.);
         let (ymin, ymax) = (0., 10.);
-        let (nx, ny) = (6, 6);
+        let (nx, ny) = (6, 6); // Use numbers that don't divide the sides evenly on purpose
 
         // Create rectilinear locator
         let dx = (xmax - xmin) / nx as f64;
@@ -313,6 +409,7 @@ mod tests {
         // Create `Mesh` to check the results using the winding number
         let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny).unwrap();
 
+        // Select the number of points generated. The higher it is, the more time the test takes.
         let np = 20;
         proptest!(|(points in proptest::collection::vec(coords_in_range(xmin, xmax, ymin, ymax), np))| {
             let locations = locator.locate(&points);
