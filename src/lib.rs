@@ -187,8 +187,8 @@ impl RectilinearLocator {
         let nx = self.x.len();
         let ny = self.y.len();
         for [xp, yp] in points {
-            let x_idx = self.x.partition_point(|x| x < xp);
-            let y_idx = self.y.partition_point(|y| y < yp);
+            let x_idx = self.x.partition_point(|x| x <= xp);
+            let y_idx = self.y.partition_point(|y| y <= yp);
             if x_idx > 0 && x_idx < nx && y_idx > 0 && y_idx < ny {
                 locations.push(Some((nx - 1) * (y_idx - 1) + x_idx - 1))
             } else {
@@ -203,6 +203,8 @@ impl RectilinearLocator {
 mod tests {
     use crate::winding_number::Point;
     use anyhow::Result;
+    use itertools::Itertools;
+    use proptest::prelude::*;
 
     use super::*;
 
@@ -286,5 +288,43 @@ mod tests {
                 assert!(point.is_inside(cell));
             }
         }
+    }
+
+    prop_compose! {
+        fn coords_in_range(xmin: f64, xmax: f64, ymin: f64, ymax: f64)
+                          (x in xmin..xmax, y in ymin..ymax) -> [f64; 2] {
+           [x, y]
+        }
+    }
+
+    #[test]
+    fn rectilinear_locator_proptest() {
+        let (xmin, xmax) = (0., 10.);
+        let (ymin, ymax) = (0., 10.);
+        let (nx, ny) = (6, 6);
+
+        // Create rectilinear locator
+        let dx = (xmax - xmin) / nx as f64;
+        let x = (0..=nx).map(|n| xmin + n as f64 * dx).collect_vec();
+        let dy = (ymax - ymin) / ny as f64;
+        let y = (0..=ny).map(|n| ymin + n as f64 * dy).collect_vec();
+        let locator = RectilinearLocator::new(x, y);
+
+        // Create `Mesh` to check the results using the winding number
+        let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny).unwrap();
+
+        let np = 20;
+        proptest!(|(points in proptest::collection::vec(coords_in_range(xmin, xmax, ymin, ymax), np))| {
+            let locations = locator.locate(&points);
+
+            // Check results using the winding number
+            for (point, idx) in points.iter().map(Point::from).zip(&locations) {
+                let Some(idx) = idx else {
+                    panic!("All points should be in a cell but {:?} is not", &point);
+                };
+                let cell = mesh.cell_vertices(*idx).cloned();
+                assert!(point.is_inside(cell));
+            }
+        });
     }
 }
