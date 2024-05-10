@@ -20,11 +20,7 @@ trait PointLocator {
 
     /// Locates several query points within a mesh.
     fn locate_many(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
-        let mut locations = Vec::with_capacity(points.len());
-        for point in points {
-            locations.push(self.locate_one(point));
-        }
-        locations
+        points.iter().map(|point| self.locate_one(point)).collect()
     }
 }
 
