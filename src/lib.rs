@@ -11,6 +11,23 @@ use dcel::{Dcel, FaceId, Hedge, HedgeId};
 use itertools::Itertools;
 use mesh::Mesh;
 
+/// A trait to locate one or several query points within a mesh.
+trait PointLocator {
+    /// Locates one query point within a mesh.
+    ///
+    /// Returns [`None`] if the query point does not lie in any cell of the mesh.
+    fn locate_one(&self, point: &[f64; 2]) -> Option<usize>;
+
+    /// Locates several query points within a mesh.
+    fn locate_many(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
+        let mut locations = Vec::with_capacity(points.len());
+        for point in points {
+            locations.push(self.locate_one(point));
+        }
+        locations
+    }
+}
+
 struct TrapMap {
     dcel: Dcel,
     dag: Dag<Node>,
@@ -192,10 +209,10 @@ impl RectilinearLocator {
 
         Ok(Self { x, y })
     }
+}
 
-    /// Find the cells of the rectilinear grid that contain the input points.
-    ///
-    /// A point which lies outside of all the mesh cells is indicated by a `None` value.
+impl PointLocator for RectilinearLocator {
+    /// Locates a point in a rectilinear mesh.
     ///
     /// The location is performed with two binary searches: one on the x-axis and one on the y-axis.
     ///
@@ -204,20 +221,16 @@ impl RectilinearLocator {
     /// then the next cell is its right neighbor if it exists or its top neighbor otherwise.
     /// This continues until the end of the bottom row is reached, and then we continue to the
     /// second row.
-    fn locate(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
-        let mut locations = Vec::with_capacity(points.len());
+    fn locate_one(&self, [xp, yp]: &[f64; 2]) -> Option<usize> {
         let nx = self.x.len();
         let ny = self.y.len();
-        for [xp, yp] in points {
-            let x_idx = self.x.partition_point(|x| x <= xp);
-            let y_idx = self.y.partition_point(|y| y <= yp);
-            if x_idx > 0 && x_idx < nx && y_idx > 0 && y_idx < ny {
-                locations.push(Some((nx - 1) * (y_idx - 1) + x_idx - 1))
-            } else {
-                locations.push(None)
-            };
+        let x_idx = self.x.partition_point(|x| x <= xp);
+        let y_idx = self.y.partition_point(|y| y <= yp);
+        if x_idx > 0 && x_idx < nx && y_idx > 0 && y_idx < ny {
+            Some((nx - 1) * (y_idx - 1) + x_idx - 1)
+        } else {
+            None
         }
-        locations
     }
 }
 
@@ -308,7 +321,7 @@ mod tests {
         let points = vec![[0.5, 0.5], [1.5, 0.5], [0.5, 1.5], [1.5, 1.5], [2.5, 2.5]];
         let locator = RectilinearLocator::new(x, y)?;
 
-        let locations = locator.locate(&points);
+        let locations = locator.locate_many(&points);
 
         assert_eq!(locations, vec![Some(0), Some(1), Some(2), Some(3), None]);
 
@@ -346,7 +359,7 @@ mod tests {
         ];
         let locator = RectilinearLocator::new(x, y)?;
 
-        let locations = locator.locate(&points);
+        let locations = locator.locate_many(&points);
 
         assert_eq!(
             locations,
@@ -395,7 +408,7 @@ mod tests {
         ];
         let locator = RectilinearLocator::new(x, y)?;
 
-        let locations = locator.locate(&points);
+        let locations = locator.locate_many(&points);
 
         assert_eq!(
             locations,
@@ -450,7 +463,7 @@ mod tests {
         // Select the number of points generated. The higher it is, the more time the test takes.
         let np = 20;
         proptest!(|(points in proptest::collection::vec(coords_in_range(xmin, xmax, ymin, ymax), np))| {
-            let locations = locator.locate(&points);
+            let locations = locator.locate_many(&points);
 
             // Check results using the winding number
             for (point, idx) in points.iter().map(Point::from).zip(&locations) {
