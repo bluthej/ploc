@@ -65,12 +65,12 @@ impl<T> Dag<T> {
     }
 
     /// Append a new node to an existing one.
-    pub(crate) fn append_to(&mut self, data: T, idx: usize) -> Result<usize> {
-        self.append_to_many(data, &[idx])
+    pub(crate) fn append_to(&mut self, idx: usize, data: T) -> Result<usize> {
+        self.append_to_many(&[idx], data)
     }
 
     /// Append a new node to several existing ones.
-    fn append_to_many(&mut self, data: T, idxs: &[usize]) -> Result<usize> {
+    fn append_to_many(&mut self, idxs: &[usize], data: T) -> Result<usize> {
         let new_idx = self.add(data);
         for &idx in idxs {
             self.arena
@@ -84,7 +84,7 @@ impl<T> Dag<T> {
     }
 
     /// Insert a new node before an existing one.
-    pub(crate) fn insert_before(&mut self, data: T, idx: usize) -> Result<usize> {
+    pub(crate) fn insert_before(&mut self, idx: usize, data: T) -> Result<usize> {
         let new_idx = self.add(data);
         // Store old node's parents
         let old_node = self
@@ -160,7 +160,7 @@ mod tests {
         let mut dag = Dag::new();
         let idx0 = dag.add(42);
 
-        let idx = dag.append_to(314, idx0)?;
+        let idx = dag.append_to(idx0, 314)?;
 
         assert_eq!(idx, 1);
         assert_eq!(dag.get(idx0).unwrap().children, &[idx]);
@@ -176,7 +176,7 @@ mod tests {
         let mut dag = Dag::new();
         let idx0 = dag.add(42);
 
-        let idx = dag.insert_before(314, idx0)?;
+        let idx = dag.insert_before(idx0, 314)?;
 
         assert_eq!(idx, 1);
         assert_eq!(dag.get(idx0).unwrap().data, 314);
@@ -194,9 +194,9 @@ mod tests {
         let mut dag = Dag::new();
         let idx0 = dag.add(42);
         let idx1 = dag.add(4);
-        let idx2 = dag.append_to_many(16, &[idx0, idx1])?;
+        let idx2 = dag.append_to_many(&[idx0, idx1], 16)?;
 
-        let idx = dag.insert_before(314, idx2)?;
+        let idx = dag.insert_before(idx2, 314)?;
 
         assert_eq!(idx, 3);
         assert_eq!(dag.get(idx2).unwrap().data, 314);
