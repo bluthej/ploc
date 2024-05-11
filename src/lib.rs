@@ -7,7 +7,7 @@ mod winding_number;
 
 use anyhow::{anyhow, Result};
 use dag::Dag;
-use dcel::{Dcel, FaceId, Hedge, HedgeId};
+use dcel::{Dcel, Hedge, HedgeId};
 use itertools::Itertools;
 use mesh::Mesh;
 
@@ -146,11 +146,6 @@ impl TrapMap {
         );
     }
 
-    fn find_face(&self, point: &[f64; 2]) -> Option<FaceId> {
-        let (_, trap) = self.find_trapezoid(point);
-        self.dcel.get_hedge(trap.bottom).face
-    }
-
     fn find_trapezoid(&self, _point: &[f64; 2]) -> (usize, &Trapezoid) {
         let node_id = 0;
         loop {
@@ -183,6 +178,13 @@ impl TrapMap {
         let _d_nid = self.dag.append_to(Node::Trap(d_trap), s_nid);
 
         self.print_stats();
+    }
+}
+
+impl PointLocator for TrapMap {
+    fn locate_one(&self, point: &[f64; 2]) -> Option<usize> {
+        let (_, trap) = self.find_trapezoid(point);
+        self.dcel.get_hedge(trap.bottom).face.as_deref().copied()
     }
 }
 
@@ -263,7 +265,7 @@ mod tests {
 
         let point = [0., 0.];
 
-        assert_eq!(trap_map.find_face(&point), None);
+        assert_eq!(trap_map.locate_one(&point), None);
     }
 
     #[test]

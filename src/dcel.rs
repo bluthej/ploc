@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    ops::{Add, AddAssign, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Sub, SubAssign},
 };
 
 use itertools::Itertools;
@@ -83,6 +83,14 @@ pub(crate) struct VertexId(usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct FaceId(usize);
+
+impl Deref for FaceId {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct HedgeId(pub(crate) usize);
