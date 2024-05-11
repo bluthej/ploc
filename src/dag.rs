@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Result};
 use std::slice::Iter;
 
 /// A Directed Acyclic Graph (DAG).
@@ -21,14 +20,6 @@ use std::slice::Iter;
 #[derive(Debug, Default)]
 pub(crate) struct Dag<T> {
     arena: Vec<Node<T>>,
-}
-
-/// A node of the DAG.
-#[derive(Debug, Default)]
-pub(crate) struct Node<T> {
-    pub(crate) data: T,
-    parents: Vec<usize>,
-    children: Vec<usize>,
 }
 
 impl<T> Dag<T> {
@@ -64,42 +55,23 @@ impl<T> Dag<T> {
         self.arena.iter()
     }
 
-    /// Append a new node to an existing one.
-    pub(crate) fn append_to(&mut self, data: T, idx: usize) -> Result<usize> {
-        self.append_to_many(data, &[idx])
+    /// Gets the given index’ corresponding entry in the DAG for in-place manipulation.
+    pub(crate) fn entry(&mut self, idx: usize) -> Entry<'_, T> {
+        Entry { idx, dag: self }
     }
 
-    /// Append a new node to several existing ones.
-    fn append_to_many(&mut self, data: T, idxs: &[usize]) -> Result<usize> {
-        let new_idx = self.add(data);
-        for &idx in idxs {
-            self.arena
-                .get_mut(idx)
-                .ok_or(anyhow!("Node with index {} does not exist.", idx))?
-                .children
-                .push(new_idx);
-            self.arena[new_idx].parents.push(idx);
-        }
-        Ok(new_idx)
+    /// Gets the given indices’ corresponding entries in the DAG for in-place manipulation.
+    pub(crate) fn entries<'a>(&'a mut self, idxs: &'a [usize]) -> Entries<'a, T> {
+        Entries { idxs, dag: self }
     }
+}
 
-    /// Insert a new node before an existing one.
-    pub(crate) fn insert_before(&mut self, data: T, idx: usize) -> Result<usize> {
-        let new_idx = self.add(data);
-        // Store old node's parents
-        let old_node = self
-            .arena
-            .get_mut(idx)
-            .ok_or(anyhow!("Node with index {} does not exist.", idx))?;
-        let old_parents = std::mem::take(&mut old_node.parents);
-        // Swap the node indices so that the new node takes the old node's place
-        self.arena.swap(idx, new_idx);
-        // Set the parents and children
-        self.arena[idx].parents = old_parents;
-        self.arena[idx].children.push(new_idx);
-        self.arena[new_idx].parents.push(idx);
-        Ok(new_idx)
-    }
+/// A node of the DAG.
+#[derive(Debug, Default)]
+pub(crate) struct Node<T> {
+    pub(crate) data: T,
+    parents: Vec<usize>,
+    children: Vec<usize>,
 }
 
 impl<T> Node<T> {
@@ -112,9 +84,76 @@ impl<T> Node<T> {
     }
 }
 
+/// A view into a single entry in a DAG, which may or may not exist yet.
+pub(crate) struct Entry<'a, T> {
+    idx: usize,
+    dag: &'a mut Dag<T>,
+}
+
+impl<T> Entry<'_, T> {
+    /// Appends a new [`Node`] with given data to the entry, if it exists.
+    pub(crate) fn append(&mut self, data: T) -> Option<usize> {
+        let dag = &mut self.dag;
+        let idx = self.idx;
+        let new_idx = dag.add(data);
+        if let Some(node) = dag.arena.get_mut(idx) {
+            node.children.push(new_idx);
+            dag.arena[new_idx].parents.push(idx);
+            Some(new_idx)
+        } else {
+            None
+        }
+    }
+
+    /// Prepends a new [`Node`] with given data to the entry, if it exists.
+    pub(crate) fn prepend(&mut self, data: T) -> Option<usize> {
+        let dag = &mut self.dag;
+        let idx = self.idx;
+        let new_idx = dag.add(data);
+        // Store old node's parents
+        if let Some(old_node) = dag.arena.get_mut(idx) {
+            let old_parents = std::mem::take(&mut old_node.parents);
+            // Swap the node indices so that the new node takes the old node's place
+            dag.arena.swap(idx, new_idx);
+            // Set the parents and children
+            dag.arena[idx].parents = old_parents;
+            dag.arena[idx].children.push(new_idx);
+            dag.arena[new_idx].parents.push(idx);
+            Some(new_idx)
+        } else {
+            None
+        }
+    }
+}
+
+/// A view into a multiple entries in a DAG, which may or may not exist yet.
+pub(crate) struct Entries<'a, T> {
+    idxs: &'a [usize],
+    dag: &'a mut Dag<T>,
+}
+
+impl<T> Entries<'_, T> {
+    /// Appends a new [`Node`] with given data to multiple entries, if they all exist.
+    pub(crate) fn append(&mut self, data: T) -> Option<usize> {
+        let dag = &mut self.dag;
+        let idxs = self.idxs;
+        let new_idx = dag.add(data);
+        for &idx in idxs {
+            if let Some(node) = dag.arena.get_mut(idx) {
+                node.children.push(new_idx);
+                dag.arena[new_idx].parents.push(idx);
+            } else {
+                return None;
+            }
+        }
+        Some(new_idx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::{anyhow, Result};
 
     #[test]
     fn create_empty_dag() {
@@ -160,7 +199,10 @@ mod tests {
         let mut dag = Dag::new();
         let idx0 = dag.add(42);
 
-        let idx = dag.append_to(314, idx0)?;
+        let idx = dag
+            .entry(idx0)
+            .prepend(314)
+            .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 1);
         assert_eq!(dag.get(idx0).unwrap().children, &[idx]);
@@ -176,7 +218,10 @@ mod tests {
         let mut dag = Dag::new();
         let idx0 = dag.add(42);
 
-        let idx = dag.insert_before(314, idx0)?;
+        let idx = dag
+            .entry(idx0)
+            .prepend(314)
+            .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 1);
         assert_eq!(dag.get(idx0).unwrap().data, 314);
@@ -194,9 +239,15 @@ mod tests {
         let mut dag = Dag::new();
         let idx0 = dag.add(42);
         let idx1 = dag.add(4);
-        let idx2 = dag.append_to_many(16, &[idx0, idx1])?;
+        let idx2 = dag
+            .entries(&[idx0, idx1])
+            .append(16)
+            .ok_or(anyhow!("Missing entry"))?;
 
-        let idx = dag.insert_before(314, idx2)?;
+        let idx = dag
+            .entry(idx2)
+            .prepend(314)
+            .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 3);
         assert_eq!(dag.get(idx2).unwrap().data, 314);
