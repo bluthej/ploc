@@ -55,10 +55,12 @@ impl<T> Dag<T> {
         self.arena.iter()
     }
 
+    /// Gets the given index’ corresponding entry in the DAG for in-place manipulation.
     pub(crate) fn entry(&mut self, idx: usize) -> Entry<'_, T> {
         Entry { idx, dag: self }
     }
 
+    /// Gets the given indices’ corresponding entries in the DAG for in-place manipulation.
     pub(crate) fn entries<'a>(&'a mut self, idxs: &'a [usize]) -> Entries<'a, T> {
         Entries { idxs, dag: self }
     }
@@ -82,12 +84,14 @@ impl<T> Node<T> {
     }
 }
 
+/// A view into a single entry in a DAG, which may or may not exist yet.
 pub(crate) struct Entry<'a, T> {
     idx: usize,
     dag: &'a mut Dag<T>,
 }
 
 impl<T> Entry<'_, T> {
+    /// Appends a new [`Node`] with given data to the entry, if it exists.
     pub(crate) fn append(&mut self, data: T) -> Option<usize> {
         let dag = &mut self.dag;
         let idx = self.idx;
@@ -101,6 +105,7 @@ impl<T> Entry<'_, T> {
         }
     }
 
+    /// Prepends a new [`Node`] with given data to the entry, if it exists.
     pub(crate) fn prepend(&mut self, data: T) -> Option<usize> {
         let dag = &mut self.dag;
         let idx = self.idx;
@@ -121,12 +126,14 @@ impl<T> Entry<'_, T> {
     }
 }
 
+/// A view into a multiple entries in a DAG, which may or may not exist yet.
 pub(crate) struct Entries<'a, T> {
     idxs: &'a [usize],
     dag: &'a mut Dag<T>,
 }
 
 impl<T> Entries<'_, T> {
+    /// Appends a new [`Node`] with given data to multiple entries, if they all exist.
     pub(crate) fn append(&mut self, data: T) -> Option<usize> {
         let dag = &mut self.dag;
         let idxs = self.idxs;
