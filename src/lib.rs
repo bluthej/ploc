@@ -160,18 +160,18 @@ impl TrapMap {
 
         let (old_nid, _old_trap) = self.find_trapezoid(p);
 
-        let p_nid = self.dag.insert_before(old_nid, Node::X).unwrap();
-        let q_nid = self.dag.append_to(p_nid, Node::X).unwrap();
-        let s_nid = self.dag.append_to(q_nid, Node::Y).unwrap();
+        let p_nid = self.dag.entry(old_nid).prepend(Node::X).unwrap();
+        let q_nid = self.dag.entry(p_nid).append(Node::X).unwrap();
+        let s_nid = self.dag.entry(q_nid).append(Node::Y).unwrap();
         let b_trap = Trapezoid {
             top: HedgeId(0),
             bottom: HedgeId(0),
         };
         let c_trap = b_trap.clone();
         let d_trap = b_trap.clone();
-        let _b_nid = self.dag.append_to(q_nid, Node::Trap(b_trap));
-        let _c_nid = self.dag.append_to(s_nid, Node::Trap(c_trap));
-        let _d_nid = self.dag.append_to(s_nid, Node::Trap(d_trap));
+        let _b_nid = self.dag.entry(q_nid).append(Node::Trap(b_trap));
+        let _c_nid = self.dag.entry(s_nid).append(Node::Trap(c_trap));
+        let _d_nid = self.dag.entry(s_nid).append(Node::Trap(d_trap));
 
         self.print_stats();
     }
