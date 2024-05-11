@@ -7,9 +7,12 @@ mod winding_number;
 
 use anyhow::{anyhow, Result};
 use dag::Dag;
-use dcel::{Dcel, Hedge, HedgeId};
+use dcel::{Dcel, Hedge, HedgeId, VertexId};
 use itertools::Itertools;
 use mesh::Mesh;
+use winding_number::Positioning;
+
+use crate::winding_number::Point;
 
 /// A trait to locate one or several query points within a mesh.
 trait PointLocator {
@@ -32,8 +35,8 @@ struct TrapMap {
 
 // TODO: add the necessary data
 enum Node {
-    X,
-    Y,
+    X(VertexId),
+    Y(HedgeId),
     Trap(Trapezoid),
 }
 
@@ -102,14 +105,14 @@ impl TrapMap {
     fn x_node_count(&self) -> usize {
         self.dag
             .iter()
-            .filter(|&node| matches!(node.data, Node::X))
+            .filter(|&node| matches!(node.data, Node::X(..)))
             .count()
     }
 
     fn y_node_count(&self) -> usize {
         self.dag
             .iter()
-            .filter(|&node| matches!(node.data, Node::Y))
+            .filter(|&node| matches!(node.data, Node::Y(..)))
             .count()
     }
 
@@ -125,8 +128,8 @@ impl TrapMap {
             (0, 0, 0),
             |(mut x_count, mut y_count, mut trap_count), node| {
                 match node.data {
-                    Node::X => x_count += 1,
-                    Node::Y => y_count += 1,
+                    Node::X(..) => x_count += 1,
+                    Node::Y(..) => y_count += 1,
                     Node::Trap(..) => trap_count += 1,
                 };
                 (x_count, y_count, trap_count)
@@ -142,12 +145,30 @@ impl TrapMap {
         );
     }
 
-    fn find_trapezoid(&self, _point: &[f64; 2]) -> (usize, &Trapezoid) {
-        let node_id = 0;
+    fn find_trapezoid(&self, point: &[f64; 2]) -> (usize, &Trapezoid) {
+        let mut node_id = 0;
         loop {
-            match &self.dag.get(node_id).unwrap().data {
+            let node = &self.dag.get(node_id).unwrap();
+            match &node.data {
                 Node::Trap(trapezoid) => return (node_id, trapezoid),
-                _ => todo!("Handle X and Y nodes later"),
+                Node::X(vid) => {
+                    let vert: &[f64; 2] = self.dcel.get_vertex(*vid);
+                    if point[0] < vert[0] {
+                        node_id = node.children[0];
+                    } else {
+                        node_id = node.children[1];
+                    }
+                }
+                Node::Y(hid) => {
+                    let hedge = self.dcel.get_hedge(*hid);
+                    let twin = self.dcel.get_hedge(hedge.twin);
+                    let p1: &[f64; 2] = self.dcel.get_vertex(hedge.origin);
+                    let p2: &[f64; 2] = self.dcel.get_vertex(twin.origin);
+                    match Point::from(point).position(*p1, *p2) {
+                        Positioning::Right => node_id = node.children[1],
+                        _ => node_id = node.children[0],
+                    }
+                }
             }
         }
     }
@@ -156,13 +177,19 @@ impl TrapMap {
         self.print_stats();
 
         let hedge = self.dcel.get_hedge(hedge_id);
+        let twin = self.dcel.get_hedge(hedge.twin);
         let p = self.dcel.get_vertex(hedge.origin);
 
         let (old_nid, _old_trap) = self.find_trapezoid(p);
 
-        let p_nid = self.dag.entry(old_nid).prepend(Node::X).unwrap();
-        let q_nid = self.dag.entry(p_nid).append(Node::X).unwrap();
-        let s_nid = self.dag.entry(q_nid).append(Node::Y).unwrap();
+        let _a_nid = self
+            .dag
+            .entry(old_nid)
+            .prepend(Node::X(hedge.origin))
+            .unwrap();
+        let p_nid = old_nid;
+        let q_nid = self.dag.entry(p_nid).append(Node::X(twin.origin)).unwrap();
+        let s_nid = self.dag.entry(q_nid).append(Node::Y(hedge_id)).unwrap();
         let b_trap = Trapezoid {
             top: HedgeId(0),
             bottom: HedgeId(0),
@@ -289,11 +316,23 @@ mod tests {
         let dcel = Dcel::from_mesh(mesh);
         let mut trap_map = TrapMap::from_dcel(dcel);
 
+        // Add the edge
         trap_map.add_edge(HedgeId(0));
 
+        // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 4);
         assert_eq!(trap_map.x_node_count(), 2);
         assert_eq!(trap_map.y_node_count(), 1);
+
+        // Check that points in the 4 trapezoids are correctly located
+        let (a, _) = trap_map.find_trapezoid(&[-0.1, 0.]);
+        assert_eq!(a, 1);
+        let (b, _) = trap_map.find_trapezoid(&[1.1, 0.]);
+        assert_eq!(b, 4);
+        let (c, _) = trap_map.find_trapezoid(&[0.5, 0.5]);
+        assert_eq!(c, 5);
+        let (d, _) = trap_map.find_trapezoid(&[0.5, -0.5]);
+        assert_eq!(d, 6);
 
         Ok(())
     }

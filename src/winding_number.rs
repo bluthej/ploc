@@ -36,7 +36,7 @@ impl From<[f64; 2]> for Point {
 
 /// Positioning of a `Point` with respect to a line.
 #[derive(Debug, PartialEq)]
-enum Positioning {
+pub(crate) enum Positioning {
     Left,
     On,
     Right,
@@ -44,7 +44,7 @@ enum Positioning {
 
 impl Point {
     /// Test if a point is Left|On|Right of an infinite 2D line defined by two points.
-    fn position<T>(&self, p1: T, p2: T) -> Positioning
+    pub(crate) fn position<T>(&self, p1: T, p2: T) -> Positioning
     where
         T: Into<[f64; 2]>,
     {
