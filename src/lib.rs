@@ -158,7 +158,7 @@ impl TrapMap {
         let hedge = self.dcel.get_hedge(hedge_id);
         let p = self.dcel.get_vertex(hedge.origin);
 
-        let (old_nid, _old_trap) = self.find_trapezoid(&p.coords);
+        let (old_nid, _old_trap) = self.find_trapezoid(p);
 
         let p_nid = self.dag.insert_before(Node::X, old_nid).unwrap();
         let q_nid = self.dag.append_to(Node::X, p_nid).unwrap();

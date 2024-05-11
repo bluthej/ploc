@@ -47,6 +47,14 @@ impl Display for Vertex {
     }
 }
 
+impl Deref for Vertex {
+    type Target = [f64; 2];
+
+    fn deref(&self) -> &Self::Target {
+        &self.coords
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Face {
     start: HedgeId,
