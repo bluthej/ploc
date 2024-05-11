@@ -22,14 +22,6 @@ pub(crate) struct Dag<T> {
     arena: Vec<Node<T>>,
 }
 
-/// A node of the DAG.
-#[derive(Debug, Default)]
-pub(crate) struct Node<T> {
-    pub(crate) data: T,
-    parents: Vec<usize>,
-    children: Vec<usize>,
-}
-
 impl<T> Dag<T> {
     /// Constructs a new empty DAG.
     pub(crate) fn new() -> Self {
@@ -70,6 +62,14 @@ impl<T> Dag<T> {
     pub(crate) fn entries<'a>(&'a mut self, idxs: &'a [usize]) -> Entries<'a, T> {
         Entries { idxs, dag: self }
     }
+}
+
+/// A node of the DAG.
+#[derive(Debug, Default)]
+pub(crate) struct Node<T> {
+    pub(crate) data: T,
+    parents: Vec<usize>,
+    children: Vec<usize>,
 }
 
 impl<T> Node<T> {
