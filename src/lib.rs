@@ -52,11 +52,7 @@ struct BoundingBox {
 }
 
 impl BoundingBox {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn from_bounds(xmin: f64, xmax: f64, ymin: f64, ymax: f64) -> Self {
+    fn new(xmin: f64, xmax: f64, ymin: f64, ymax: f64) -> Self {
         Self {
             xmin: xmin - 0.1,
             xmax: xmax + 0.1,
@@ -98,7 +94,7 @@ impl TrapMap {
         dag.add(Node::Trap(Trapezoid { top, bottom }));
 
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
-        let bbox = BoundingBox::from_bounds(xmin, xmax, ymin, ymax);
+        let bbox = BoundingBox::new(xmin, xmax, ymin, ymax);
 
         Self { dcel, dag, bbox }
     }
