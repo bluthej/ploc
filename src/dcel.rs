@@ -159,13 +159,19 @@ impl Dcel {
         }
     }
 
-    fn with_capacity(nv: usize, nc: usize, nf: usize) -> Self {
+    fn with_capacity(nv: usize, nc: usize, nh: usize) -> Self {
         Self {
             vertices: Vec::with_capacity(nv),
             faces: Vec::with_capacity(nc),
-            hedges: Vec::with_capacity(nf),
+            hedges: Vec::with_capacity(nh),
             contours: Vec::new(),
         }
+    }
+
+    fn reserve(&mut self, nv_add: usize, nc_add: usize, nh_add: usize) {
+        self.vertices.reserve(nv_add);
+        self.faces.reserve(nc_add);
+        self.hedges.reserve(nh_add);
     }
 
     pub(crate) fn get_bounds(&self) -> [f64; 4] {
@@ -271,15 +277,57 @@ impl Dcel {
     pub(crate) fn from_mesh(mesh: Mesh) -> Self {
         let nv = mesh.vertex_count();
         let nc = mesh.cell_count();
+        let nh = 2 * mesh.facet_count();
+
+        let mut dcel = Self::with_capacity(nv, nc, nh);
+        dcel.append(mesh);
+
+        dcel
+    }
+
+    fn get_face_coords(&self, face: usize) -> Vec<[f64; 2]> {
+        self.face_vertices(face).map(|vert| vert.coords).collect()
+    }
+
+    fn get_face_vertex_ids(&self, face: usize) -> Vec<VertexId> {
+        self.face_hedges(FaceId(face))
+            .map(|hedge| hedge.origin)
+            .collect()
+    }
+
+    pub(crate) fn vertex_count(&self) -> usize {
+        self.vertices.len()
+    }
+
+    pub(crate) fn face_count(&self) -> usize {
+        self.faces.len()
+    }
+
+    pub(crate) fn hedge_count(&self) -> usize {
+        self.hedges.len()
+    }
+
+    pub(crate) fn append(&mut self, mesh: Mesh) {
+        let vertex_count = self.vertex_count();
+        let face_count = self.face_count();
+        let hedge_count = self.hedge_count();
+
+        let nv = mesh.vertex_count();
+        let nc = mesh.cell_count();
         let nf = mesh.facet_count();
 
-        let mut dcel = Self::with_capacity(nv, nc, nf);
-        dcel.add_vertices(mesh.points());
+        let nv_add = vertex_count + nv - self.vertices.capacity();
+        let nc_add = face_count + nc - self.faces.capacity();
+        let nh_add = hedge_count + 2 * nf - self.hedges.capacity();
+        // NOTE: reserve calls `Vec::reserve` which does nothing if the capacity is already enough
+        self.reserve(nv_add, nc_add, nh_add);
 
-        let mut current_hedge_id = HedgeId(0);
+        self.add_vertices(mesh.points());
+
+        let mut current_hedge_id = HedgeId(self.hedge_count());
         let mut edges = HashMap::with_capacity(nf);
         for (idx, cell) in mesh.cells().enumerate() {
-            dcel.add_face(Face {
+            self.add_face(Face {
                 start: current_hedge_id,
             });
 
@@ -297,10 +345,15 @@ impl Dcel {
                     current_hedge_id + 1
                 };
 
+                // Offset with previous vertex and face counts
+                let a = a + vertex_count;
+                let b = b + vertex_count;
+                let idx = idx + face_count;
+
                 let twin = if let Some(twin) = edges.remove(&(b, a)) {
                     // We have already seen the current half-edge's twin, and we know the current
                     // half-edge is its twin!
-                    dcel.get_hedge_mut(twin).twin = current_hedge_id;
+                    self.get_hedge_mut(twin).twin = current_hedge_id;
                     twin
                 } else {
                     // Store half-edge id to set the twin id later on
@@ -308,14 +361,14 @@ impl Dcel {
                     HedgeId(usize::MAX)
                 };
 
-                dcel.add_hedge(Hedge {
+                self.add_hedge(Hedge {
                     origin: VertexId(a),
                     twin,
                     face: Some(FaceId(idx)),
                     next,
                     prev,
                 });
-                dcel.get_vertex_mut(VertexId(a)).hedge = current_hedge_id;
+                self.get_vertex_mut(VertexId(a)).hedge = current_hedge_id;
 
                 current_hedge_id += 1;
             }
@@ -324,7 +377,7 @@ impl Dcel {
         // Find boundary half-edges
         // TODO: only works for one boundary, make it work when there are holes as well
         let first_outer_hedge_id = current_hedge_id;
-        dcel.contours.push(first_outer_hedge_id);
+        self.contours.push(first_outer_hedge_id);
         let start_id = HedgeId(edges.values().map(|hedge_id| hedge_id.0).min().unwrap());
         let mut inner_hedge_id = start_id;
         'outer: loop {
@@ -332,44 +385,32 @@ impl Dcel {
             // when exiting the loop
             let next = current_hedge_id + 1;
             let prev = current_hedge_id - 1;
-            dcel.add_hedge(Hedge {
-                origin: dcel.get_hedge(dcel.get_hedge(inner_hedge_id).next).origin,
+            self.add_hedge(Hedge {
+                origin: self.get_hedge(self.get_hedge(inner_hedge_id).next).origin,
                 twin: inner_hedge_id,
                 face: None,
                 next,
                 prev,
             });
-            dcel.get_hedge_mut(inner_hedge_id).twin = current_hedge_id;
+            self.get_hedge_mut(inner_hedge_id).twin = current_hedge_id;
             current_hedge_id += 1;
             loop {
                 // Iterate over the current origin's `umbrella` to find the next hedge
-                inner_hedge_id = dcel.get_hedge(inner_hedge_id).prev;
+                inner_hedge_id = self.get_hedge(inner_hedge_id).prev;
                 if inner_hedge_id == start_id {
                     // Means we are back at the start, time to fix the first and last half-edge
                     let last_outer_hedge_id = current_hedge_id - 1;
-                    dcel.get_hedge_mut(first_outer_hedge_id).prev = last_outer_hedge_id;
-                    dcel.get_hedge_mut(last_outer_hedge_id).next = first_outer_hedge_id;
+                    self.get_hedge_mut(first_outer_hedge_id).prev = last_outer_hedge_id;
+                    self.get_hedge_mut(last_outer_hedge_id).next = first_outer_hedge_id;
                     break 'outer;
                 }
-                if dcel.get_hedge(inner_hedge_id).twin.0 < usize::MAX {
-                    inner_hedge_id = dcel.get_hedge(inner_hedge_id).twin;
+                if self.get_hedge(inner_hedge_id).twin.0 < usize::MAX {
+                    inner_hedge_id = self.get_hedge(inner_hedge_id).twin;
                 } else {
                     break;
                 }
             }
         }
-
-        dcel
-    }
-
-    fn get_face_coords(&self, face: usize) -> Vec<[f64; 2]> {
-        self.face_vertices(face).map(|vert| vert.coords).collect()
-    }
-
-    fn get_face_vertex_ids(&self, face: usize) -> Vec<VertexId> {
-        self.face_hedges(FaceId(face))
-            .map(|hedge| hedge.origin)
-            .collect()
     }
 }
 
@@ -750,5 +791,56 @@ mod tests {
         assert!(!dcel.get_hedge(HedgeId(3)).points_to_the_right(&dcel));
         assert!(dcel.get_hedge(HedgeId(4)).points_to_the_right(&dcel));
         assert!(dcel.get_hedge(HedgeId(5)).points_to_the_right(&dcel));
+    }
+
+    #[test]
+    fn append_mesh() {
+        let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4).expect("This should be a valid input");
+
+        // Create empty DCEL
+        let mut dcel = Dcel::new();
+
+        // Append the mesh
+        dcel.append(mesh);
+
+        assert_eq!(dcel.face_count(), 1);
+        assert_eq!(dcel.vertex_count(), 4);
+
+        let vertex_ids = dcel.get_face_vertex_ids(0);
+        let expected_vertex_ids = [0, 1, 2, 3].into_iter().map(VertexId).collect::<Vec<_>>();
+        assert_eq!(vertex_ids, expected_vertex_ids);
+        let verts = dcel.get_face_coords(0);
+        let expected_coords = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        assert_eq!(verts, expected_coords);
+    }
+
+    #[test]
+    fn append_mesh_to_existing_dcel() {
+        let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4).expect("This should be a valid input");
+
+        // Create DCEL with first mesh
+        let mut dcel = Dcel::from_mesh(mesh);
+
+        // Create second mesh
+        let points = vec![[2., 0.], [3., 0.], [3., 1.], [2., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4).expect("This should be a valid input");
+
+        // Append the mesh
+        dcel.append(mesh);
+
+        assert_eq!(dcel.face_count(), 2);
+        assert_eq!(dcel.vertex_count(), 8);
+
+        let vertex_ids = dcel.get_face_vertex_ids(1);
+        let expected_vertex_ids = [4, 5, 6, 7].into_iter().map(VertexId).collect::<Vec<_>>();
+        assert_eq!(vertex_ids, expected_vertex_ids);
+        let verts = dcel.get_face_coords(1);
+        let expected_coords = vec![[2., 0.], [3., 0.], [3., 1.], [2., 1.]];
+        assert_eq!(verts, expected_coords);
     }
 }
