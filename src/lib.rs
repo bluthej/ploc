@@ -168,6 +168,15 @@ impl TrapMap {
         );
     }
 
+    fn build(mut self) -> Self {
+        let hedge_count = self.dcel.hedge_count();
+        // Last 8 half-edges are for the bounding box, so we always have at least 8 half-edges
+        for idx in 0..(hedge_count - 8) {
+            self.add_edge(HedgeId(idx));
+        }
+        self
+    }
+
     fn add_edge(&mut self, hedge_id: HedgeId) {
         self.print_stats();
 
@@ -182,46 +191,139 @@ impl TrapMap {
         let top = trap.top;
         let bottom = trap.bottom;
         let rightp = trap.rightp;
-        let _leftp = trap.leftp;
+        let leftp = trap.leftp;
 
-        let _a_nid = self
-            .dag
-            .entry(old_nid)
-            .prepend(Node::X(hedge.origin))
-            .unwrap();
-        let p_nid = old_nid;
-
-        let s_nid = if rightp == twin.origin {
-            // In that case the right end of s is already present so we don't add an X-node
-            self.dag.entry(p_nid).append(Node::Y(hedge_id)).unwrap()
+        // There are some redundent branches but the code is easier to follow that way
+        #[allow(clippy::collapsible_else_if)]
+        if leftp == hedge.origin {
+            if rightp == twin.origin {
+                let s_nid = old_nid;
+                // Insert the s Y-node
+                let c_nid = self.dag.entry(s_nid).prepend(Node::Y(hedge_id)).unwrap();
+                // Update the bottom edge of the C trapezoid
+                self.dag.entry(c_nid).and_modify(|node| {
+                    let Node::Trap(c) = node else {
+                        unreachable!("Has to be a trapezoid")
+                    };
+                    c.bottom = hedge_id;
+                });
+                // Append the D trapezoid
+                let d = Trapezoid {
+                    top: hedge_id,
+                    bottom,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(s_nid).append(Node::Trap(d)).unwrap();
+            } else {
+                let q_nid = old_nid;
+                // Insert the q X-node
+                let s_nid = self.dag.entry(q_nid).prepend(Node::X(twin.origin)).unwrap();
+                // Append the B trapezoid
+                let b = Trapezoid {
+                    top: hedge_id,
+                    bottom,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(q_nid).append(Node::Trap(b)).unwrap();
+                // Insert the s Y-node
+                let c_nid = self.dag.entry(s_nid).prepend(Node::Y(hedge_id)).unwrap();
+                // Update the bottom edge of the C trapezoid
+                self.dag.entry(c_nid).and_modify(|node| {
+                    let Node::Trap(c) = node else {
+                        unreachable!("Has to be a trapezoid")
+                    };
+                    c.bottom = hedge_id;
+                });
+                // Append the D trapezoid
+                let d = Trapezoid {
+                    top: hedge_id,
+                    bottom,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(s_nid).append(Node::Trap(d)).unwrap();
+            }
         } else {
-            // In that case the right end of s is not already present so we add an X-node
-            let q_nid = self.dag.entry(p_nid).append(Node::X(twin.origin)).unwrap();
-            let b = Trapezoid {
-                top,
-                bottom,
-                leftp: twin.origin,
-                rightp,
-            };
-            let s_nid = self.dag.entry(q_nid).append(Node::Y(hedge_id)).unwrap();
-            let _b_nid = self.dag.entry(q_nid).append(Node::Trap(b));
-            s_nid
-        };
-
-        let c = Trapezoid {
-            top,
-            bottom: hedge_id,
-            leftp: hedge.origin,
-            rightp: twin.origin,
-        };
-        let d = Trapezoid {
-            top: hedge_id,
-            bottom,
-            leftp: hedge.origin,
-            rightp: twin.origin,
-        };
-        let _c_nid = self.dag.entry(s_nid).append(Node::Trap(c));
-        let _d_nid = self.dag.entry(s_nid).append(Node::Trap(d));
+            if rightp == twin.origin {
+                let p_nid = old_nid;
+                // Insert the p X-node
+                let a_nid = self
+                    .dag
+                    .entry(p_nid)
+                    .prepend(Node::X(hedge.origin))
+                    .unwrap();
+                // Update the rightp of the A trapezoid
+                self.dag.entry(a_nid).and_modify(|node| {
+                    let Node::Trap(a) = node else {
+                        unreachable!("Has to be a trapezoid")
+                    };
+                    a.rightp = hedge.origin;
+                });
+                // Append the s Y-node
+                let s_nid = self.dag.entry(p_nid).append(Node::Y(hedge_id)).unwrap();
+                // Append the C trapezoid
+                let c = Trapezoid {
+                    top,
+                    bottom: hedge_id,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(s_nid).append(Node::Trap(c)).unwrap();
+                // Append the D trapezoid
+                let d = Trapezoid {
+                    top: hedge_id,
+                    bottom,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(s_nid).append(Node::Trap(d)).unwrap();
+            } else {
+                let p_nid = old_nid;
+                // Insert the p X-node
+                let a_nid = self
+                    .dag
+                    .entry(p_nid)
+                    .prepend(Node::X(hedge.origin))
+                    .unwrap();
+                // Update the rightp of the A trapezoid
+                self.dag.entry(a_nid).and_modify(|node| {
+                    let Node::Trap(a) = node else {
+                        unreachable!("Has to be a trapezoid")
+                    };
+                    a.rightp = hedge.origin;
+                });
+                // Append the q X-node
+                let q_nid = self.dag.entry(p_nid).append(Node::X(rightp)).unwrap();
+                // Append the s Y-node
+                let s_nid = self.dag.entry(q_nid).append(Node::Y(hedge_id)).unwrap();
+                // Append the B trapezoid
+                let b = Trapezoid {
+                    top,
+                    bottom,
+                    leftp: twin.origin,
+                    rightp,
+                };
+                self.dag.entry(q_nid).append(Node::Trap(b)).unwrap();
+                // Append the C trapezoid
+                let c = Trapezoid {
+                    top,
+                    bottom: hedge_id,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(s_nid).append(Node::Trap(c)).unwrap();
+                // Append the D trapezoid
+                let d = Trapezoid {
+                    top: hedge_id,
+                    bottom,
+                    leftp: hedge.origin,
+                    rightp: twin.origin,
+                };
+                self.dag.entry(s_nid).append(Node::Trap(d)).unwrap();
+            }
+        }
 
         self.print_stats();
     }
@@ -265,20 +367,16 @@ impl TrapMap {
 
 impl PointLocator for TrapMap {
     fn locate_one(&self, point: &[f64; 2]) -> Option<usize> {
-        let bbox_face = self.dcel.face_count();
+        if self.dcel.face_count() == 0 {
+            return None;
+        }
+
+        let bbox_face = self.dcel.face_count() - 1;
 
         let (_, trap) = self.find_trapezoid(point);
-        let face = self
-            .dcel
-            .get_hedge(trap.bottom)
-            .face
-            .as_deref()
-            .copied()
-            .expect(
-            "The bottom half-edge should always have a face. Only boundaries don't have a face.",
-        );
+        let face = self.dcel.get_hedge(trap.bottom).face.as_deref().copied()?;
 
-        (face == bbox_face).then_some(face)
+        (face < bbox_face).then_some(face)
     }
 }
 
@@ -387,6 +485,7 @@ mod tests {
         let dcel = Dcel::from_mesh(mesh);
         let first = HedgeId(0);
         let second = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
+        let third = dcel.get_hedge(HedgeId(2)).twin; // Need to get the twin of 2 so that it points to the right
 
         let mut trap_map = TrapMap::from_dcel(dcel);
 
@@ -414,6 +513,35 @@ mod tests {
         assert_eq!(trap_map.trap_count(), 6);
         assert_eq!(trap_map.x_node_count(), 3);
         assert_eq!(trap_map.y_node_count(), 2);
+
+        // Add the third edge
+        trap_map.add_edge(third);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 7);
+        assert_eq!(trap_map.x_node_count(), 3);
+        assert_eq!(trap_map.y_node_count(), 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn locate_points_in_single_triangle() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let cells = vec![0, 1, 2];
+        let mesh = Mesh::with_stride(points, cells, 3)?;
+
+        let trap_map = TrapMap::from_mesh(mesh).build();
+
+        // Locate a point inside the triangle
+        assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
+
+        // Locate points outside the triangle
+        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
+        assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
+        assert_eq!(trap_map.locate_one(&[0.2, 0.8]), None); // above to the left
+        assert_eq!(trap_map.locate_one(&[1.2, 0.8]), None); // to the right
+        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
 
         Ok(())
     }

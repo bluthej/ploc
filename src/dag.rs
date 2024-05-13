@@ -124,6 +124,16 @@ impl<T> Entry<'_, T> {
             None
         }
     }
+
+    pub(crate) fn and_modify<F>(self, f: F) -> Self
+    where
+        F: FnOnce(&mut T),
+    {
+        if let Some(node) = self.dag.get_mut(self.idx) {
+            f(&mut node.data);
+        }
+        self
+    }
 }
 
 /// A view into a multiple entries in a DAG, which may or may not exist yet.
