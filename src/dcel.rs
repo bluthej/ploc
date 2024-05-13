@@ -87,7 +87,7 @@ impl Hedge {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) struct VertexId(usize);
+pub(crate) struct VertexId(pub(crate) usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct FaceId(usize);

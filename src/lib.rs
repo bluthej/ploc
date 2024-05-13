@@ -7,7 +7,7 @@ mod winding_number;
 
 use anyhow::{anyhow, Result};
 use dag::Dag;
-use dcel::{Dcel, Hedge, HedgeId, VertexId};
+use dcel::{Dcel, HedgeId, VertexId};
 use itertools::Itertools;
 use mesh::Mesh;
 use winding_number::Positioning;
@@ -45,6 +45,8 @@ enum Node {
 struct Trapezoid {
     top: HedgeId,
     bottom: HedgeId,
+    rightp: VertexId,
+    leftp: VertexId,
 }
 
 struct BoundingBox {
@@ -90,14 +92,35 @@ impl TrapMap {
     fn from_dcel(dcel: Dcel) -> Self {
         let mut dag = Dag::new();
 
-        let mut dcel = dcel;
-        let top = dcel.add_hedge(Hedge::new());
-        let bottom = dcel.add_hedge(Hedge::new());
-
-        dag.add(Node::Trap(Trapezoid { top, bottom }));
-
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
         let bbox = BoundingBox::new(xmin, xmax, ymin, ymax);
+        let BoundingBox {
+            xmin,
+            xmax,
+            ymin,
+            ymax,
+        } = bbox;
+
+        let mut dcel = dcel;
+
+        let vertex_count = dcel.vertex_count();
+        let hedge_count = dcel.hedge_count();
+
+        // Add the bounding box to the DCEL
+        let rec = Mesh::with_stride(
+            vec![[xmin, ymax], [xmax, ymax], [xmax, ymin], [xmin, ymin]],
+            vec![0, 1, 2, 3],
+            4,
+        )
+        .unwrap();
+        dcel.append(rec);
+
+        dag.add(Node::Trap(Trapezoid {
+            top: HedgeId(hedge_count),
+            bottom: HedgeId(hedge_count + 2),
+            leftp: VertexId(vertex_count),
+            rightp: VertexId(vertex_count + 1),
+        }));
 
         Self { dcel, dag, bbox }
     }
@@ -145,6 +168,72 @@ impl TrapMap {
         );
     }
 
+    fn add_edge(&mut self, hedge_id: HedgeId) {
+        self.print_stats();
+
+        let hedge = self.dcel.get_hedge(hedge_id);
+        let twin = self.dcel.get_hedge(hedge.twin);
+
+        let ds = self.follow_segment(hedge_id);
+        let old_nid = ds[0];
+        let Node::Trap(trap) = &self.dag.get(old_nid).unwrap().data else {
+            unreachable!("Has to be a trapezoid")
+        };
+        let top = trap.top;
+        let bottom = trap.bottom;
+        let rightp = trap.rightp;
+        let _leftp = trap.leftp;
+
+        let _a_nid = self
+            .dag
+            .entry(old_nid)
+            .prepend(Node::X(hedge.origin))
+            .unwrap();
+        let p_nid = old_nid;
+
+        let s_nid = if rightp == twin.origin {
+            // In that case the right end of s is already present so we don't add an X-node
+            self.dag.entry(p_nid).append(Node::Y(hedge_id)).unwrap()
+        } else {
+            // In that case the right end of s is not already present so we add an X-node
+            let q_nid = self.dag.entry(p_nid).append(Node::X(twin.origin)).unwrap();
+            let b = Trapezoid {
+                top,
+                bottom,
+                leftp: twin.origin,
+                rightp,
+            };
+            let s_nid = self.dag.entry(q_nid).append(Node::Y(hedge_id)).unwrap();
+            let _b_nid = self.dag.entry(q_nid).append(Node::Trap(b));
+            s_nid
+        };
+
+        let c = Trapezoid {
+            top,
+            bottom: hedge_id,
+            leftp: hedge.origin,
+            rightp: twin.origin,
+        };
+        let d = Trapezoid {
+            top: hedge_id,
+            bottom,
+            leftp: hedge.origin,
+            rightp: twin.origin,
+        };
+        let _c_nid = self.dag.entry(s_nid).append(Node::Trap(c));
+        let _d_nid = self.dag.entry(s_nid).append(Node::Trap(d));
+
+        self.print_stats();
+    }
+
+    fn follow_segment(&self, hedge_id: HedgeId) -> Vec<usize> {
+        let hedge = self.dcel.get_hedge(hedge_id);
+        let p = self.dcel.get_vertex(hedge.origin);
+        let (d0, _) = self.find_trapezoid(p);
+        let res = vec![d0];
+        res
+    }
+
     fn find_trapezoid(&self, point: &[f64; 2]) -> (usize, &Trapezoid) {
         let mut node_id = 0;
         loop {
@@ -172,42 +261,24 @@ impl TrapMap {
             }
         }
     }
-
-    fn add_edge(&mut self, hedge_id: HedgeId) {
-        self.print_stats();
-
-        let hedge = self.dcel.get_hedge(hedge_id);
-        let twin = self.dcel.get_hedge(hedge.twin);
-        let p = self.dcel.get_vertex(hedge.origin);
-
-        let (old_nid, _old_trap) = self.find_trapezoid(p);
-
-        let _a_nid = self
-            .dag
-            .entry(old_nid)
-            .prepend(Node::X(hedge.origin))
-            .unwrap();
-        let p_nid = old_nid;
-        let q_nid = self.dag.entry(p_nid).append(Node::X(twin.origin)).unwrap();
-        let s_nid = self.dag.entry(q_nid).append(Node::Y(hedge_id)).unwrap();
-        let b_trap = Trapezoid {
-            top: HedgeId(0),
-            bottom: HedgeId(0),
-        };
-        let c_trap = b_trap.clone();
-        let d_trap = b_trap.clone();
-        let _b_nid = self.dag.entry(q_nid).append(Node::Trap(b_trap));
-        let _c_nid = self.dag.entry(s_nid).append(Node::Trap(c_trap));
-        let _d_nid = self.dag.entry(s_nid).append(Node::Trap(d_trap));
-
-        self.print_stats();
-    }
 }
 
 impl PointLocator for TrapMap {
     fn locate_one(&self, point: &[f64; 2]) -> Option<usize> {
+        let bbox_face = self.dcel.face_count();
+
         let (_, trap) = self.find_trapezoid(point);
-        self.dcel.get_hedge(trap.bottom).face.as_deref().copied()
+        let face = self
+            .dcel
+            .get_hedge(trap.bottom)
+            .face
+            .as_deref()
+            .copied()
+            .expect(
+            "The bottom half-edge should always have a face. Only boundaries don't have a face.",
+        );
+
+        (face == bbox_face).then_some(face)
     }
 }
 
@@ -309,21 +380,23 @@ mod tests {
     }
 
     #[test]
-    fn add_first_edge() -> Result<()> {
+    fn add_edges() -> Result<()> {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
         let dcel = Dcel::from_mesh(mesh);
+        let first = HedgeId(0);
+        let second = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
+
         let mut trap_map = TrapMap::from_dcel(dcel);
 
-        // Add the edge
-        trap_map.add_edge(HedgeId(0));
+        // Add the first edge
+        trap_map.add_edge(first);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 4);
         assert_eq!(trap_map.x_node_count(), 2);
         assert_eq!(trap_map.y_node_count(), 1);
-
         // Check that points in the 4 trapezoids are correctly located
         let (a, _) = trap_map.find_trapezoid(&[-0.1, 0.]);
         assert_eq!(a, 1);
@@ -333,6 +406,14 @@ mod tests {
         assert_eq!(c, 5);
         let (d, _) = trap_map.find_trapezoid(&[0.5, -0.5]);
         assert_eq!(d, 6);
+
+        // Add the second edge
+        trap_map.add_edge(second);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 6);
+        assert_eq!(trap_map.x_node_count(), 3);
+        assert_eq!(trap_map.y_node_count(), 2);
 
         Ok(())
     }
