@@ -6,6 +6,7 @@ use std::{
     ops::{Add, AddAssign, Deref, Sub, SubAssign},
 };
 
+use anyhow::{anyhow, Result};
 use itertools::Itertools;
 
 use crate::mesh::Mesh;
@@ -55,6 +56,26 @@ impl Deref for Vertex {
     }
 }
 
+/// A struct for a partially initialized vertex.
+///
+/// During the construction of the DCEL, we don't know at first which half-edges each vertex belongs
+/// to, so we initialize them without a half-edge and update them afterwards.
+/// However, since in the end every vertex has an associated half-edge, we don't want to leave an
+/// `Option<HedgeId>`, which is why this temporary struct is useful.
+struct PartialVertex {
+    coords: [f64; 2],
+    hedge: Option<HedgeId>,
+}
+
+impl PartialVertex {
+    fn try_into_vertex(self) -> Result<Vertex> {
+        Ok(Vertex {
+            coords: self.coords,
+            hedge: self.hedge.ok_or(anyhow!("Missing `hedge` field"))?,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Face {
     start: HedgeId,
@@ -83,6 +104,34 @@ impl Hedge {
         let q = dcel.get_vertex(qid);
 
         q.is_right_of(p)
+    }
+}
+
+/// A struct for a partially initialized half-edge.
+///
+/// During the construction of the DCEL, we don't know immediately the id of a half-edge's twin
+/// or the next/previous half-edge, so we initialize them without these attributes and update them
+/// afterwards.
+/// However, since in the end every half-edge has them, we don't want to leave `Option`s behind,
+/// which is why this temporary struct is useful.
+#[derive(Debug)]
+struct PartialHedge {
+    origin: VertexId,
+    twin: Option<HedgeId>,
+    face: Option<FaceId>,
+    next: Option<HedgeId>,
+    prev: Option<HedgeId>,
+}
+
+impl PartialHedge {
+    fn try_into_hedge(self) -> Result<Hedge> {
+        Ok(Hedge {
+            origin: self.origin,
+            twin: self.twin.ok_or(anyhow!("Missing `twin` field"))?,
+            face: self.face,
+            next: self.next.ok_or(anyhow!("Missing `next` field"))?,
+            prev: self.prev.ok_or(anyhow!("Missing `prev` field"))?,
+        })
     }
 }
 
@@ -249,18 +298,6 @@ impl Dcel {
         }
     }
 
-    fn add_vertices<'a, I>(&mut self, vertices: I)
-    where
-        I: IntoIterator<Item = &'a [f64; 2]>,
-    {
-        for coords in vertices.into_iter() {
-            self.vertices.push(Vertex {
-                coords: *coords,
-                hedge: HedgeId(usize::MAX),
-            });
-        }
-    }
-
     pub(crate) fn add_hedge(&mut self, hedge: Hedge) -> HedgeId {
         let id = self.hedges.len();
         self.hedges.push(hedge);
@@ -322,17 +359,28 @@ impl Dcel {
         // NOTE: reserve calls `Vec::reserve` which does nothing if the capacity is already enough
         self.reserve(nv_add, nc_add, nh_add);
 
-        self.add_vertices(mesh.points());
+        // Partially initialized vertices
+        let mut vertices: Vec<_> = mesh
+            .points()
+            .map(|&coords| PartialVertex {
+                coords,
+                hedge: None,
+            })
+            .collect();
 
-        let mut current_hedge_id = HedgeId(self.hedge_count());
+        let offset = self.hedge_count();
+        let mut current_hedge_id = offset;
         let mut edges = HashMap::with_capacity(nf);
+        let mut hedges = Vec::with_capacity(nh_add); // Partially initialized half-edges
         for (idx, cell) in mesh.cells().enumerate() {
             self.add_face(Face {
-                start: current_hedge_id,
+                start: HedgeId(current_hedge_id),
             });
 
             let cell_nf = cell.len();
             for (&a, &b) in cell.iter().circular_tuple_windows() {
+                vertices[a].hedge = Some(HedgeId(current_hedge_id));
+
                 // Determine previous and next half-edge id
                 let prev = if a == cell[0] {
                     current_hedge_id + cell_nf - 1
@@ -350,67 +398,90 @@ impl Dcel {
                 let b = b + vertex_count;
                 let idx = idx + face_count;
 
-                let twin = if let Some(twin) = edges.remove(&(b, a)) {
-                    // We have already seen the current half-edge's twin, and we know the current
-                    // half-edge is its twin!
-                    self.get_hedge_mut(twin).twin = current_hedge_id;
-                    twin
-                } else {
-                    // Store half-edge id to set the twin id later on
-                    edges.insert((a, b), current_hedge_id);
-                    HedgeId(usize::MAX)
-                };
+                let twin = edges.remove(&(b, a));
+                match twin {
+                    Some(twin_idx) => {
+                        // We have already seen the current half-edge's twin, and we know the current
+                        // half-edge is its twin!
+                        let twin: &mut PartialHedge = &mut hedges[twin_idx - offset];
+                        twin.twin = Some(HedgeId(current_hedge_id));
+                    }
+                    None => {
+                        // Store half-edge id to set the twin id later on
+                        edges.insert((a, b), current_hedge_id);
+                    }
+                }
 
-                self.add_hedge(Hedge {
+                hedges.push(PartialHedge {
                     origin: VertexId(a),
-                    twin,
+                    twin: twin.map(HedgeId),
                     face: Some(FaceId(idx)),
-                    next,
-                    prev,
+                    next: Some(HedgeId(next)),
+                    prev: Some(HedgeId(prev)),
                 });
-                self.get_vertex_mut(VertexId(a)).hedge = current_hedge_id;
 
                 current_hedge_id += 1;
             }
         }
 
+        // Add vertices (they should all have been visited by now)
+        self.vertices.extend(vertices.into_iter().map(|vertex| {
+            vertex
+                .try_into_vertex()
+                .expect("All vertices should be complete at this point")
+        }));
+
         // Find boundary half-edges
         // TODO: only works for one boundary, make it work when there are holes as well
         let first_outer_hedge_id = current_hedge_id;
-        self.contours.push(first_outer_hedge_id);
-        let start_id = HedgeId(edges.values().map(|hedge_id| hedge_id.0).min().unwrap());
+        self.contours.push(HedgeId(first_outer_hedge_id));
+        let start_id = *edges.values().min().unwrap();
         let mut inner_hedge_id = start_id;
         'outer: loop {
             // These are wrong for the first and last half-edge of the contour, but this is fixed
             // when exiting the loop
             let next = current_hedge_id + 1;
             let prev = current_hedge_id - 1;
-            self.add_hedge(Hedge {
-                origin: self.get_hedge(self.get_hedge(inner_hedge_id).next).origin,
-                twin: inner_hedge_id,
+            let next_inner_hedge_id = hedges[inner_hedge_id - offset]
+                .next
+                .expect("There should always be a next hedge here")
+                .0;
+            hedges.push(PartialHedge {
+                origin: hedges[next_inner_hedge_id - offset].origin,
+                twin: Some(HedgeId(inner_hedge_id)),
                 face: None,
-                next,
-                prev,
+                next: Some(HedgeId(next)),
+                prev: Some(HedgeId(prev)),
             });
-            self.get_hedge_mut(inner_hedge_id).twin = current_hedge_id;
+            hedges[inner_hedge_id - offset].twin = Some(HedgeId(current_hedge_id));
             current_hedge_id += 1;
             loop {
                 // Iterate over the current origin's `umbrella` to find the next hedge
-                inner_hedge_id = self.get_hedge(inner_hedge_id).prev;
+                inner_hedge_id = hedges[inner_hedge_id - offset]
+                    .prev
+                    .expect("There should always be a previous hedge here")
+                    .0;
                 if inner_hedge_id == start_id {
                     // Means we are back at the start, time to fix the first and last half-edge
                     let last_outer_hedge_id = current_hedge_id - 1;
-                    self.get_hedge_mut(first_outer_hedge_id).prev = last_outer_hedge_id;
-                    self.get_hedge_mut(last_outer_hedge_id).next = first_outer_hedge_id;
+                    hedges[first_outer_hedge_id - offset].prev = Some(HedgeId(last_outer_hedge_id));
+                    hedges[last_outer_hedge_id - offset].next = Some(HedgeId(first_outer_hedge_id));
                     break 'outer;
                 }
-                if self.get_hedge(inner_hedge_id).twin.0 < usize::MAX {
-                    inner_hedge_id = self.get_hedge(inner_hedge_id).twin;
+                if let Some(HedgeId(twin)) = hedges[inner_hedge_id - offset].twin {
+                    inner_hedge_id = twin;
                 } else {
                     break;
                 }
             }
         }
+
+        // Finalize hedges
+        self.hedges.extend(hedges.into_iter().map(|hedge| {
+            hedge
+                .try_into_hedge()
+                .expect("All hedges should be complete at this point")
+        }));
     }
 }
 

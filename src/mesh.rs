@@ -256,6 +256,11 @@ impl Mesh {
             idx: start,
         }
     }
+
+    /// Returns the coordinates of the point with index `idx`.
+    pub(crate) fn coords(&self, idx: usize) -> [f64; 2] {
+        self.points[idx]
+    }
 }
 
 #[cfg(test)]
