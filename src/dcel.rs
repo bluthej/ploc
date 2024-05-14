@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    ops::{Add, AddAssign, Deref, Sub, SubAssign},
+    ops::{Add, AddAssign, Sub, SubAssign},
 };
 
 use anyhow::{anyhow, Result};
@@ -45,14 +45,6 @@ impl Display for Vertex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let [x, y] = self.coords;
         write!(f, "({}, {})", x, y)
-    }
-}
-
-impl Deref for Vertex {
-    type Target = [f64; 2];
-
-    fn deref(&self) -> &Self::Target {
-        &self.coords
     }
 }
 
@@ -141,11 +133,9 @@ pub(crate) struct VertexId(pub(crate) usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct FaceId(usize);
 
-impl Deref for FaceId {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl FaceId {
+    pub(crate) fn get(&self) -> usize {
+        self.0
     }
 }
 

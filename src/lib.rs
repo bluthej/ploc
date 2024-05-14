@@ -331,7 +331,7 @@ impl TrapMap {
     fn follow_segment(&self, hedge_id: HedgeId) -> Vec<usize> {
         let hedge = self.dcel.get_hedge(hedge_id);
         let p = self.dcel.get_vertex(hedge.origin);
-        let (d0, _) = self.find_trapezoid(p);
+        let (d0, _) = self.find_trapezoid(&p.coords);
         let res = vec![d0];
         res
     }
@@ -343,7 +343,7 @@ impl TrapMap {
             match &node.data {
                 Node::Trap(trapezoid) => return (node_id, trapezoid),
                 Node::X(vid) => {
-                    let vert: &[f64; 2] = self.dcel.get_vertex(*vid);
+                    let vert: &[f64; 2] = &self.dcel.get_vertex(*vid).coords;
                     if point[0] < vert[0] {
                         node_id = node.children[0];
                     } else {
@@ -353,8 +353,8 @@ impl TrapMap {
                 Node::Y(hid) => {
                     let hedge = self.dcel.get_hedge(*hid);
                     let twin = self.dcel.get_hedge(hedge.twin);
-                    let p1: &[f64; 2] = self.dcel.get_vertex(hedge.origin);
-                    let p2: &[f64; 2] = self.dcel.get_vertex(twin.origin);
+                    let p1: &[f64; 2] = &self.dcel.get_vertex(hedge.origin).coords;
+                    let p2: &[f64; 2] = &self.dcel.get_vertex(twin.origin).coords;
                     match Point::from(point).position(*p1, *p2) {
                         Positioning::Right => node_id = node.children[1],
                         _ => node_id = node.children[0],
@@ -374,7 +374,7 @@ impl PointLocator for TrapMap {
         let bbox_face = self.dcel.face_count() - 1;
 
         let (_, trap) = self.find_trapezoid(point);
-        let face = self.dcel.get_hedge(trap.bottom).face.as_deref().copied()?;
+        let face = self.dcel.get_hedge(trap.bottom).face?.get();
 
         (face < bbox_face).then_some(face)
     }
