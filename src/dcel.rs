@@ -334,6 +334,30 @@ impl Dcel {
         self.hedges.len()
     }
 
+    pub(crate) fn slope(&self, hedge_id: HedgeId) -> f64 {
+        let (p, q) = self.get_endpoints(hedge_id);
+        let [xp, yp] = p.coords;
+        let [xq, yq] = q.coords;
+        if xp == xq {
+            f64::INFINITY
+        } else {
+            (yq - yp) / (xq - xp)
+        }
+    }
+
+    pub(crate) fn points_right(&self, hedge_id: HedgeId) -> bool {
+        let (p, q) = self.get_endpoints(hedge_id);
+        q.is_right_of(p)
+    }
+
+    pub(crate) fn get_endpoints(&self, hedge_id: HedgeId) -> (&Vertex, &Vertex) {
+        let hedge = self.get_hedge(hedge_id);
+        let twin = self.get_hedge(hedge.twin);
+        let p = self.get_vertex(hedge.origin);
+        let q = self.get_vertex(twin.origin);
+        (p, q)
+    }
+
     pub(crate) fn append(&mut self, mesh: Mesh) {
         let vertex_count = self.vertex_count();
         let face_count = self.face_count();
