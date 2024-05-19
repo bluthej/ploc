@@ -389,7 +389,12 @@ impl Dcel {
 
             let cell_nf = cell.len();
             for (&a, &b) in cell.iter().circular_tuple_windows() {
-                vertices[a].hedge = Some(HedgeId(current_hedge_id));
+                if vertices[a].hedge.is_none() {
+                    // Only set the half-edge the first time the vertex is seen
+                    // This should associate each vertex with the first cell in which it is found,
+                    // so that we can match matplotlib's behavior with triangles
+                    vertices[a].hedge = Some(HedgeId(current_hedge_id));
+                }
 
                 // Determine previous and next half-edge id
                 let prev = if a == cell[0] {
