@@ -253,71 +253,60 @@ impl TrapMap {
                 let below_idx = self.dag.add(Node::Trap(below));
                 let above_idx = self.dag.add(Node::Trap(above));
 
+                // Connect neighbors
                 let left_idx = if have_left {
-                    let mut left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
-                    left.lower_left = old.lower_left;
-                    left.upper_left = old.upper_left;
-                    left.lower_right = Some(below_idx);
-                    left.upper_right = Some(above_idx);
-                    Some(self.dag.add(Node::Trap(left)))
+                    let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
+                    let left_idx = self.dag.add(Node::Trap(left));
+                    self.connect_lower_neighbors(old.lower_left, Some(left_idx));
+                    self.connect_upper_neighbors(old.upper_left, Some(left_idx));
+                    self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
+                    self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
+                    Some(left_idx)
                 } else {
-                    self.dag
-                        .entry(below_idx)
-                        .and_modify(|below| below.get_trap_mut().lower_left = old.lower_left);
-                    self.dag.entry(above_idx).and_modify(|above| {
-                        above.get_trap_mut().upper_left = old.upper_left;
-                    });
+                    self.connect_lower_neighbors(old.lower_left, Some(below_idx));
+                    self.connect_upper_neighbors(old.upper_left, Some(above_idx));
                     None
                 };
 
                 let right_idx = if have_right {
-                    let mut right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
-                    right.lower_right = old.lower_right;
-                    right.upper_right = old.upper_right;
+                    let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
                     let right_idx = self.dag.add(Node::Trap(right));
-                    self.dag
-                        .entry(below_idx)
-                        .and_modify(|below| below.get_trap_mut().lower_right = Some(right_idx));
-                    self.dag
-                        .entry(above_idx)
-                        .and_modify(|above| above.get_trap_mut().lower_right = Some(right_idx));
+                    self.connect_lower_neighbors(Some(right_idx), old.lower_right);
+                    self.connect_upper_neighbors(Some(right_idx), old.upper_right);
+                    self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
+                    self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
                     Some(right_idx)
                 } else {
-                    self.dag
-                        .entry(below_idx)
-                        .and_modify(|below| below.get_trap_mut().lower_right = old.lower_right);
-                    self.dag
-                        .entry(above_idx)
-                        .and_modify(|above| above.get_trap_mut().lower_right = old.upper_right);
+                    self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+                    self.connect_upper_neighbors(Some(above_idx), old.upper_right);
                     None
                 };
 
                 (left_idx, right_idx, below_idx, above_idx)
             } else if start_trap {
                 // Old trapezoid is the first of 2+ trapezoids that the edge intersects.
-                let mut below = Trapezoid::new(p, old.rightp, old.bottom, hedge_id);
-                below.lower_right = old.lower_right;
-                let mut above = Trapezoid::new(p, old.rightp, hedge_id, old.top);
-                above.upper_right = old.upper_right;
+                let below = Trapezoid::new(p, old.rightp, old.bottom, hedge_id);
+                let above = Trapezoid::new(p, old.rightp, hedge_id, old.top);
 
                 // Add new trapezoids to DAG
                 let below_idx = self.dag.add(Node::Trap(below));
                 let above_idx = self.dag.add(Node::Trap(above));
 
+                // Connect neighbors
+                self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+                self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+
                 let left_idx = if have_left {
-                    let mut left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
-                    left.lower_left = old.lower_left;
-                    left.upper_left = old.upper_left;
-                    left.lower_right = Some(below_idx);
-                    left.upper_right = Some(above_idx);
-                    Some(self.dag.add(Node::Trap(left)))
+                    let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
+                    let left_idx = self.dag.add(Node::Trap(left));
+                    self.connect_lower_neighbors(old.lower_left, Some(left_idx));
+                    self.connect_upper_neighbors(old.upper_left, Some(left_idx));
+                    self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
+                    self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
+                    Some(left_idx)
                 } else {
-                    self.dag
-                        .entry(below_idx)
-                        .and_modify(|below| below.get_trap_mut().lower_left = old.lower_left);
-                    self.dag.entry(above_idx).and_modify(|above| {
-                        above.get_trap_mut().upper_left = old.upper_left;
-                    });
+                    self.connect_lower_neighbors(old.lower_left, Some(below_idx));
+                    self.connect_upper_neighbors(old.upper_left, Some(above_idx));
                     None
                 };
 
@@ -361,50 +350,43 @@ impl TrapMap {
                         .add(Node::Trap(Trapezoid::new(old.leftp, q, hedge_id, old.top)))
                 };
 
+                // Connect neighbors
                 let right_idx = if have_right {
-                    let mut right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
-                    right.lower_right = old.lower_right;
-                    right.upper_right = old.upper_right;
+                    let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
                     let right_idx = self.dag.add(Node::Trap(right));
-                    self.dag
-                        .entry(below_idx)
-                        .and_modify(|below| below.get_trap_mut().lower_right = Some(right_idx));
-                    self.dag
-                        .entry(above_idx)
-                        .and_modify(|above| above.get_trap_mut().lower_right = Some(right_idx));
+                    self.connect_lower_neighbors(Some(right_idx), old.lower_right);
+                    self.connect_upper_neighbors(Some(right_idx), old.upper_right);
+                    self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
+                    self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
                     Some(right_idx)
                 } else {
-                    self.dag
-                        .entry(below_idx)
-                        .and_modify(|below| below.get_trap_mut().lower_right = old.lower_right);
-                    self.dag
-                        .entry(above_idx)
-                        .and_modify(|above| above.get_trap_mut().lower_right = old.upper_right);
+                    self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+                    self.connect_upper_neighbors(Some(above_idx), old.upper_right);
                     None
                 };
 
                 if below_idx != left_below.unwrap() {
-                    self.dag.entry(below_idx).and_modify(|node| {
-                        let trap = node.get_trap_mut();
-                        trap.upper_left = left_below;
-                        trap.lower_left = if old.lower_left == left_old {
+                    self.connect_upper_neighbors(left_below, Some(below_idx));
+                    self.connect_lower_neighbors(
+                        if old.lower_left == left_old {
                             left_below
                         } else {
                             old.lower_left
-                        };
-                    });
+                        },
+                        Some(below_idx),
+                    );
                 }
 
                 if above_idx != left_above.unwrap() {
-                    self.dag.entry(above_idx).and_modify(|node| {
-                        let trap = node.get_trap_mut();
-                        trap.lower_left = left_old;
-                        trap.upper_left = if old.upper_left == left_old {
+                    self.connect_lower_neighbors(left_above, Some(above_idx));
+                    self.connect_upper_neighbors(
+                        if old.upper_left == left_old {
                             left_above
                         } else {
                             old.upper_left
-                        };
-                    });
+                        },
+                        Some(above_idx),
+                    );
                 }
 
                 let left_idx = None;
@@ -414,7 +396,74 @@ impl TrapMap {
                 // Middle trapezoid.
                 // Old trapezoid is neither the first nor last of the 3+ trapezoids that the edge
                 // intersects.
-                todo!()
+                let left_below_bottom = self
+                    .dag
+                    .get(left_below.unwrap())
+                    .unwrap()
+                    .data
+                    .get_trap()
+                    .bottom;
+                let below_idx = if left_below_bottom == old.bottom {
+                    self.dag
+                        .entry(left_below.unwrap())
+                        .and_modify(|node| node.get_trap_mut().rightp = old.rightp);
+                    left_below.unwrap()
+                } else {
+                    self.dag.add(Node::Trap(Trapezoid::new(
+                        old.leftp, old.rightp, old.bottom, hedge_id,
+                    )))
+                };
+
+                let left_above_top = self
+                    .dag
+                    .get(left_above.unwrap())
+                    .unwrap()
+                    .data
+                    .get_trap()
+                    .top;
+                let above_idx = if left_above_top == old.top {
+                    self.dag
+                        .entry(left_above.unwrap())
+                        .and_modify(|node| node.get_trap_mut().rightp = old.rightp);
+                    left_above.unwrap()
+                } else {
+                    self.dag.add(Node::Trap(Trapezoid::new(
+                        old.leftp, old.rightp, hedge_id, old.top,
+                    )))
+                };
+
+                // Connect neighbors
+                if below_idx != left_below.unwrap() {
+                    self.connect_upper_neighbors(left_below, Some(below_idx));
+                    self.connect_lower_neighbors(
+                        if old.lower_left == left_old {
+                            left_below
+                        } else {
+                            old.lower_left
+                        },
+                        Some(below_idx),
+                    );
+                }
+
+                if above_idx != left_above.unwrap() {
+                    self.connect_lower_neighbors(left_above, Some(above_idx));
+                    self.connect_upper_neighbors(
+                        if old.upper_left == left_old {
+                            left_above
+                        } else {
+                            old.upper_left
+                        },
+                        Some(above_idx),
+                    );
+                }
+
+                self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+                self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+
+                let left_idx = None;
+                let right_idx = None;
+
+                (left_idx, right_idx, below_idx, above_idx)
             };
 
             // Insert new nodes in the DAG and reuse the old trap node
@@ -487,6 +536,31 @@ impl TrapMap {
         println!()
     }
 
+    fn connect_lower_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
+        if let Some(idx) = right {
+            self.dag
+                .entry(idx)
+                .and_modify(|node| node.get_trap_mut().lower_left = left);
+        }
+        if let Some(idx) = left {
+            self.dag
+                .entry(idx)
+                .and_modify(|node| node.get_trap_mut().lower_right = right);
+        }
+    }
+
+    fn connect_upper_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
+        if let Some(idx) = right {
+            self.dag
+                .entry(idx)
+                .and_modify(|node| node.get_trap_mut().upper_left = left);
+        }
+        if let Some(idx) = left {
+            self.dag
+                .entry(idx)
+                .and_modify(|node| node.get_trap_mut().upper_right = right);
+        }
+    }
     fn follow_segment(&self, hedge_id: HedgeId) -> Vec<usize> {
         let s = self.dcel.get_hedge(hedge_id);
         let p = self.dcel.get_vertex(s.origin);
@@ -501,7 +575,10 @@ impl TrapMap {
         let mut dj = d0;
         let mut trap = self.dag.get(dj).unwrap().data.get_trap();
         let mut rightp = self.dcel.get_vertex(trap.rightp);
+        let mut counter = 1;
         while q.is_right_of(rightp) {
+            counter += 1;
+            println!("At least {} traps are intersected", counter);
             let rightp_above_s = !matches!(
                 Point::from(rightp.coords).position(p.coords, q.coords),
                 Positioning::Right
@@ -777,6 +854,54 @@ mod tests {
     }
 
     #[test]
+    fn add_edges_with_3plus_intersections() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [2., 0.], [3., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4)?;
+        let dcel = Dcel::from_mesh(mesh);
+        let first = HedgeId(0);
+        let second = HedgeId(1);
+        let third = dcel.get_hedge(HedgeId(3)).twin;
+        let fourth = HedgeId(2);
+
+        let mut trap_map = TrapMap::from_dcel(dcel);
+
+        // Add the first edge
+        trap_map.add_edge(first);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 4);
+        assert_eq!(trap_map.x_node_count(), 2);
+        assert_eq!(trap_map.y_node_count(), 1);
+
+        // Add the second edge
+        trap_map.add_edge(second);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 6);
+        assert_eq!(trap_map.x_node_count(), 3);
+        assert_eq!(trap_map.y_node_count(), 2);
+
+        // Add the third edge
+        trap_map.add_edge(third);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 8);
+        assert_eq!(trap_map.x_node_count(), 4);
+        assert_eq!(trap_map.y_node_count(), 5);
+
+        // Add the fourth edge
+        trap_map.add_edge(fourth);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 9);
+        assert_eq!(trap_map.x_node_count(), 4);
+        assert_eq!(trap_map.y_node_count(), 6);
+
+        Ok(())
+    }
+
+    #[test]
     fn locate_points_in_single_triangle() -> Result<()> {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
@@ -822,6 +947,37 @@ mod tests {
         assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
         assert_eq!(trap_map.locate_one(&[0.2, 0.8]), None); // above to the left
         assert_eq!(trap_map.locate_one(&[1.2, 0.8]), None); // to the right
+        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
+
+        Ok(())
+    }
+
+    #[test]
+    fn locate_points_with_3plus_intersections() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [2., 0.], [3., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4)?;
+        let dcel = Dcel::from_mesh(mesh);
+        let first = HedgeId(0);
+        let second = HedgeId(1);
+        let third = dcel.get_hedge(HedgeId(3)).twin;
+        let fourth = HedgeId(2);
+
+        let mut trap_map = TrapMap::from_dcel(dcel);
+
+        // Add the edges
+        trap_map.add_edge(first);
+        trap_map.add_edge(second);
+        trap_map.add_edge(third);
+        trap_map.add_edge(fourth);
+
+        // Locate a point inside the triangle
+        assert_eq!(trap_map.locate_one(&[1., 0.1]), Some(0));
+
+        // Locate points outside the triangle
+        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
+        assert_eq!(trap_map.locate_one(&[0.5, 3.8]), None); // above
+        assert_eq!(trap_map.locate_one(&[4.2, 0.8]), None); // to the right
         assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
 
         Ok(())
