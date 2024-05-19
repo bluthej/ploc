@@ -5,8 +5,6 @@ mod dcel;
 mod mesh;
 mod winding_number;
 
-use std::thread::yield_now;
-
 use anyhow::{anyhow, Result};
 use dag::Dag;
 use dcel::{Dcel, HedgeId, IsRightOf, VertexId};
@@ -255,7 +253,6 @@ impl TrapMap {
                 let below_idx = self.dag.add(Node::Trap(below));
                 let above_idx = self.dag.add(Node::Trap(above));
 
-                // Set pairs of trapezoid neighbours.
                 let left_idx = if have_left {
                     let mut left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
                     left.lower_left = old.lower_left;
@@ -298,10 +295,121 @@ impl TrapMap {
                 (left_idx, right_idx, below_idx, above_idx)
             } else if start_trap {
                 // Old trapezoid is the first of 2+ trapezoids that the edge intersects.
-                todo!()
+                let mut below = Trapezoid::new(p, old.rightp, old.bottom, hedge_id);
+                below.lower_right = old.lower_right;
+                let mut above = Trapezoid::new(p, old.rightp, hedge_id, old.top);
+                above.upper_right = old.upper_right;
+
+                // Add new trapezoids to DAG
+                let below_idx = self.dag.add(Node::Trap(below));
+                let above_idx = self.dag.add(Node::Trap(above));
+
+                let left_idx = if have_left {
+                    let mut left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
+                    left.lower_left = old.lower_left;
+                    left.upper_left = old.upper_left;
+                    left.lower_right = Some(below_idx);
+                    left.upper_right = Some(above_idx);
+                    Some(self.dag.add(Node::Trap(left)))
+                } else {
+                    self.dag
+                        .entry(below_idx)
+                        .and_modify(|below| below.get_trap_mut().lower_left = old.lower_left);
+                    self.dag.entry(above_idx).and_modify(|above| {
+                        above.get_trap_mut().upper_left = old.upper_left;
+                    });
+                    None
+                };
+
+                let right_idx = None;
+
+                (left_idx, right_idx, below_idx, above_idx)
             } else if end_trap {
                 // Old trapezoid is the last of 2+ trapezoids that the edge intersects.
-                todo!()
+                let left_below_bottom = self
+                    .dag
+                    .get(left_below.unwrap())
+                    .unwrap()
+                    .data
+                    .get_trap()
+                    .bottom;
+                let below_idx = if left_below_bottom == old.bottom {
+                    self.dag
+                        .entry(left_below.unwrap())
+                        .and_modify(|node| node.get_trap_mut().rightp = q);
+                    left_below.unwrap()
+                } else {
+                    self.dag.add(Node::Trap(Trapezoid::new(
+                        old.leftp, q, old.bottom, hedge_id,
+                    )))
+                };
+
+                let left_above_top = self
+                    .dag
+                    .get(left_above.unwrap())
+                    .unwrap()
+                    .data
+                    .get_trap()
+                    .top;
+                let above_idx = if left_above_top == old.top {
+                    self.dag
+                        .entry(left_above.unwrap())
+                        .and_modify(|node| node.get_trap_mut().rightp = q);
+                    left_above.unwrap()
+                } else {
+                    self.dag
+                        .add(Node::Trap(Trapezoid::new(old.leftp, q, hedge_id, old.top)))
+                };
+
+                let right_idx = if have_right {
+                    let mut right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
+                    right.lower_right = old.lower_right;
+                    right.upper_right = old.upper_right;
+                    let right_idx = self.dag.add(Node::Trap(right));
+                    self.dag
+                        .entry(below_idx)
+                        .and_modify(|below| below.get_trap_mut().lower_right = Some(right_idx));
+                    self.dag
+                        .entry(above_idx)
+                        .and_modify(|above| above.get_trap_mut().lower_right = Some(right_idx));
+                    Some(right_idx)
+                } else {
+                    self.dag
+                        .entry(below_idx)
+                        .and_modify(|below| below.get_trap_mut().lower_right = old.lower_right);
+                    self.dag
+                        .entry(above_idx)
+                        .and_modify(|above| above.get_trap_mut().lower_right = old.upper_right);
+                    None
+                };
+
+                if below_idx != left_below.unwrap() {
+                    self.dag.entry(below_idx).and_modify(|node| {
+                        let trap = node.get_trap_mut();
+                        trap.upper_left = left_below;
+                        trap.lower_left = if old.lower_left == left_old {
+                            left_below
+                        } else {
+                            old.lower_left
+                        };
+                    });
+                }
+
+                if above_idx != left_above.unwrap() {
+                    self.dag.entry(above_idx).and_modify(|node| {
+                        let trap = node.get_trap_mut();
+                        trap.lower_left = left_old;
+                        trap.upper_left = if old.upper_left == left_old {
+                            left_above
+                        } else {
+                            old.upper_left
+                        };
+                    });
+                }
+
+                let left_idx = None;
+
+                (left_idx, right_idx, below_idx, above_idx)
             } else {
                 // Middle trapezoid.
                 // Old trapezoid is neither the first nor last of the 3+ trapezoids that the edge
@@ -391,18 +499,24 @@ impl TrapMap {
         // Loop to find all the other ones
         let mut res = vec![d0];
         let mut dj = d0;
-        let mut trap = self.dag.get(d0).unwrap().data.get_trap();
+        let mut trap = self.dag.get(dj).unwrap().data.get_trap();
         let mut rightp = self.dcel.get_vertex(trap.rightp);
         while q.is_right_of(rightp) {
-            let above = !matches!(
+            let rightp_above_s = !matches!(
                 Point::from(rightp.coords).position(p.coords, q.coords),
                 Positioning::Right
             );
-            if above {
-                todo!()
+            if rightp_above_s {
+                dj = trap
+                    .lower_right
+                    .expect("There should be a lower right trap");
             } else {
-                todo!()
+                dj = trap
+                    .upper_right
+                    .expect("There should be an upper right trap");
             }
+            trap = self.dag.get(dj).unwrap().data.get_trap();
+            rightp = self.dcel.get_vertex(trap.rightp);
             res.push(dj);
         }
 
@@ -624,12 +738,81 @@ mod tests {
     }
 
     #[test]
+    fn add_edges_different_order() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let cells = vec![0, 1, 2];
+        let mesh = Mesh::with_stride(points, cells, 3)?;
+        let dcel = Dcel::from_mesh(mesh);
+        let first = dcel.get_hedge(HedgeId(2)).twin; // Need to get the twin of 2 so that it points to the right
+        let second = HedgeId(0);
+        let third = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
+
+        let mut trap_map = TrapMap::from_dcel(dcel);
+
+        // Add the first edge
+        trap_map.add_edge(first);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 4);
+        assert_eq!(trap_map.x_node_count(), 2);
+        assert_eq!(trap_map.y_node_count(), 1);
+
+        // Add the second edge
+        trap_map.add_edge(second);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 6);
+        assert_eq!(trap_map.x_node_count(), 3);
+        assert_eq!(trap_map.y_node_count(), 3);
+
+        // Add the third edge
+        trap_map.add_edge(third);
+
+        // Check the number of different nodes
+        assert_eq!(trap_map.trap_count(), 7);
+        assert_eq!(trap_map.x_node_count(), 3);
+        assert_eq!(trap_map.y_node_count(), 4);
+
+        Ok(())
+    }
+
+    #[test]
     fn locate_points_in_single_triangle() -> Result<()> {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
 
         let trap_map = TrapMap::from_mesh(mesh).build();
+
+        // Locate a point inside the triangle
+        assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
+
+        // Locate points outside the triangle
+        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
+        assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
+        assert_eq!(trap_map.locate_one(&[0.2, 0.8]), None); // above to the left
+        assert_eq!(trap_map.locate_one(&[1.2, 0.8]), None); // to the right
+        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
+
+        Ok(())
+    }
+
+    #[test]
+    fn locate_points_in_single_triangle_different_order() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
+        let cells = vec![0, 1, 2];
+        let mesh = Mesh::with_stride(points, cells, 3)?;
+        let dcel = Dcel::from_mesh(mesh);
+        let first = dcel.get_hedge(HedgeId(2)).twin; // Need to get the twin of 2 so that it points to the right
+        let second = HedgeId(0);
+        let third = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
+
+        let mut trap_map = TrapMap::from_dcel(dcel);
+
+        // Add the edges
+        trap_map.add_edge(first);
+        trap_map.add_edge(second);
+        trap_map.add_edge(third);
 
         // Locate a point inside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
