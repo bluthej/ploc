@@ -22,7 +22,7 @@ pub(crate) struct Dcel {
 #[derive(Debug)]
 pub(crate) struct Vertex {
     pub(crate) coords: [f64; 2],
-    hedge: HedgeId,
+    pub(crate) hedge: HedgeId,
 }
 
 pub(crate) trait IsRightOf<Rhs = Self> {

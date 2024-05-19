@@ -561,6 +561,7 @@ impl TrapMap {
                 .and_modify(|node| node.get_trap_mut().upper_right = right);
         }
     }
+
     fn follow_segment(&self, hedge_id: HedgeId) -> Vec<usize> {
         let s = self.dcel.get_hedge(hedge_id);
         let p = self.dcel.get_vertex(s.origin);
@@ -645,18 +646,21 @@ impl TrapMap {
         d0
     }
 
-    fn find_trapezoid(&self, point: &[f64; 2]) -> (usize, &Trapezoid) {
+    fn find_node(&self, point: &[f64; 2]) -> &Node {
         let mut node_id = 0;
         loop {
             let node = &self.dag.get(node_id).unwrap();
             match &node.data {
-                Node::Trap(trapezoid) => return (node_id, trapezoid),
+                Node::Trap(..) => break,
                 Node::X(vid) => {
-                    let vert: &[f64; 2] = &self.dcel.get_vertex(*vid).coords;
-                    if point[0] < vert[0] {
-                        node_id = node.children[0];
-                    } else {
+                    let vert = &self.dcel.get_vertex(*vid);
+                    if vert.coords[0] == point[0] && vert.coords[1] == point[1] {
+                        break;
+                    }
+                    if point.is_right_of(vert) {
                         node_id = node.children[1];
+                    } else {
+                        node_id = node.children[0];
                     }
                 }
                 Node::Y(hid) => {
@@ -666,11 +670,13 @@ impl TrapMap {
                     let p2: &[f64; 2] = &self.dcel.get_vertex(twin.origin).coords;
                     match Point::from(point).position(*p1, *p2) {
                         Positioning::Right => node_id = node.children[1],
-                        _ => node_id = node.children[0],
+                        Positioning::Left => node_id = node.children[0],
+                        Positioning::On => break,
                     }
                 }
             }
         }
+        &self.dag.get(node_id).unwrap().data
     }
 }
 
@@ -682,8 +688,23 @@ impl PointLocator for TrapMap {
 
         let bbox_face = self.dcel.face_count() - 1;
 
-        let (_, trap) = self.find_trapezoid(point);
-        let face = self.dcel.get_hedge(trap.bottom).face?.get();
+        let node = self.find_node(point);
+        let hedge_id = match node {
+            Node::Trap(trap) => trap.bottom,
+            _ => {
+                let hedge_id = match node {
+                    Node::X(vertex_id) => self.dcel.get_vertex(*vertex_id).hedge,
+                    Node::Y(hedge_id) => *hedge_id,
+                    _ => unreachable!(),
+                };
+                if self.dcel.get_hedge(hedge_id).face.is_some() {
+                    hedge_id
+                } else {
+                    self.dcel.get_hedge(hedge_id).twin
+                }
+            }
+        };
+        let face = self.dcel.get_hedge(hedge_id).face?.get();
 
         (face < bbox_face).then_some(face)
     }
@@ -914,14 +935,13 @@ mod tests {
 
         // Edge cases
         assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), None);
-        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), None);
+        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(0));
 
         // Corner cases
-        // NOTE: These should probably get located inside the triangle
-        assert_eq!(trap_map.locate_one(&[0., 0.]), None);
-        assert_eq!(trap_map.locate_one(&[1., 0.]), None);
-        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), None);
+        assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
 
         // Locate points outside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
@@ -1012,14 +1032,14 @@ mod tests {
         // Edge cases
         assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
         assert_eq!(trap_map.locate_one(&[0., 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.5]), None);
-        assert_eq!(trap_map.locate_one(&[0.5, 1.]), None);
+        assert_eq!(trap_map.locate_one(&[1., 0.5]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.5, 1.]), Some(0));
 
         // Corner cases
         assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.]), None);
-        assert_eq!(trap_map.locate_one(&[1., 1.]), None);
-        assert_eq!(trap_map.locate_one(&[0., 1.]), None);
+        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[1., 1.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0., 1.]), Some(0));
 
         // Locate points outside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // south
