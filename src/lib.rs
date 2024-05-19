@@ -612,8 +612,8 @@ impl TrapMap {
             match &node.data {
                 Node::Trap(..) => break,
                 Node::X(vid) => {
-                    let vert = &self.dcel.get_vertex(*vid).coords;
-                    let left = xy[0] < vert[0];
+                    let vert = &self.dcel.get_vertex(*vid);
+                    let left = !(&p == vid || xy.is_right_of(vert));
                     d0 = if left {
                         node.children[0]
                     } else {
