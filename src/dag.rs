@@ -70,7 +70,7 @@ impl<T> Dag<T> {
 #[derive(Debug, Default)]
 pub(crate) struct Node<T> {
     pub(crate) data: T,
-    parents: Vec<usize>,
+    pub(crate) parents: Vec<usize>,
     pub(crate) children: Vec<usize>,
 }
 

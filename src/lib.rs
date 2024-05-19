@@ -361,6 +361,20 @@ impl TrapMap {
             }
         }
 
+        // Sanity checks
+        for node in self.dag.iter() {
+            assert!(
+                !(node.children.is_empty() && node.parents.is_empty()),
+                "There shouldn't be isolated nodes"
+            );
+            if node.children.is_empty() {
+                assert!(
+                    matches!(node.data, Node::Trap(..)),
+                    "All leaf nodes should be trapezoids"
+                );
+            }
+        }
+
         self.print_stats();
         println!()
     }
