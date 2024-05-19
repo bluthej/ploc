@@ -359,19 +359,13 @@ impl Dcel {
     }
 
     pub(crate) fn append(&mut self, mesh: Mesh) {
-        let vertex_count = self.vertex_count();
-        let face_count = self.face_count();
-        let hedge_count = self.hedge_count();
-
         let nv = mesh.vertex_count();
         let nc = mesh.cell_count();
         let nf = mesh.facet_count();
+        let nh = 2 * nf;
 
-        let nv_add = vertex_count + nv - self.vertices.capacity();
-        let nc_add = face_count + nc - self.faces.capacity();
-        let nh_add = hedge_count + 2 * nf - self.hedges.capacity();
         // NOTE: reserve calls `Vec::reserve` which does nothing if the capacity is already enough
-        self.reserve(nv_add, nc_add, nh_add);
+        self.reserve(nv, nc, nh);
 
         // Partially initialized vertices
         let mut vertices: Vec<_> = mesh
@@ -382,10 +376,12 @@ impl Dcel {
             })
             .collect();
 
+        let vertex_count = self.vertex_count();
+        let face_count = self.face_count();
         let offset = self.hedge_count();
         let mut current_hedge_id = offset;
         let mut edges = HashMap::with_capacity(nf);
-        let mut hedges = Vec::with_capacity(nh_add); // Partially initialized half-edges
+        let mut hedges = Vec::with_capacity(nh); // Partially initialized half-edges
         for (idx, cell) in mesh.cells().enumerate() {
             self.add_face(Face {
                 start: HedgeId(current_hedge_id),

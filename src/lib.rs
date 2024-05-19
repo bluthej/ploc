@@ -1242,4 +1242,35 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn trapezoidal_map_proptest() -> Result<()> {
+        let (xmin, xmax) = (0., 10.);
+        let (ymin, ymax) = (0., 10.);
+        let (nx, ny) = (6, 6); // Use numbers that don't divide the sides evenly on purpose
+
+        // Create trapezoidal map
+        let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny)?;
+        let locator = TrapMap::from_mesh(mesh).build();
+
+        // Recreate `Mesh` to check the results using the winding number
+        let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny)?;
+
+        // Select the number of points generated. The higher it is, the more time the test takes.
+        let np = 20;
+        proptest!(|(points in proptest::collection::vec(coords_in_range(xmin, xmax, ymin, ymax), np))| {
+            let locations = locator.locate_many(&points);
+
+            // Check results using the winding number
+            for (point, idx) in points.iter().map(Point::from).zip(&locations) {
+                let Some(idx) = idx else {
+                    panic!("All points should be in a cell but {:?} is not", &point);
+                };
+                let cell = mesh.cell_vertices(*idx).cloned();
+                assert!(point.is_inside(cell));
+            }
+        });
+
+        Ok(())
+    }
 }
