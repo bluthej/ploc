@@ -984,6 +984,49 @@ mod tests {
     }
 
     #[test]
+    fn locate_points_in_single_square() -> Result<()> {
+        let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        let cells = vec![0, 1, 2, 3];
+        let mesh = Mesh::with_stride(points, cells, 4)?;
+
+        let trap_map = TrapMap::from_mesh(mesh).build();
+
+        // Locate a point inside the square
+        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.1, 0.1]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.1, 0.9]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.9, 0.9]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.9, 0.1]), Some(0));
+
+        // Locate points outside the triangle
+        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // south
+        assert_eq!(trap_map.locate_one(&[1.5, -0.1]), None); // south-east
+        assert_eq!(trap_map.locate_one(&[1.5, 0.8]), None); // east
+        assert_eq!(trap_map.locate_one(&[1.5, 1.8]), None); // north-east
+        assert_eq!(trap_map.locate_one(&[0.5, 1.8]), None); // north
+        assert_eq!(trap_map.locate_one(&[-0.5, 1.8]), None); // north-west
+        assert_eq!(trap_map.locate_one(&[-0.5, 0.8]), None); // west
+        assert_eq!(trap_map.locate_one(&[-0.5, -0.8]), None); // south-west
+
+        Ok(())
+    }
+
+    #[test]
+    fn locate_points_in_grid() -> Result<()> {
+        let mesh = Mesh::grid(0., 1., 0., 1., 2, 2)?;
+
+        let trap_map = TrapMap::from_mesh(mesh).build();
+
+        // Locate points in different cells
+        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(1));
+        assert_eq!(trap_map.locate_one(&[0.25, 0.75]), Some(2));
+        assert_eq!(trap_map.locate_one(&[0.75, 0.75]), Some(3));
+
+        Ok(())
+    }
+
+    #[test]
     fn unsorted_input_values_in_rectilinear_locator_returns_error() {
         // x or y has reversed elements
         assert!(RectilinearLocator::new(vec![0., 2., 1.], vec![0., 1., 2.]).is_err());
