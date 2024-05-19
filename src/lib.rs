@@ -912,6 +912,17 @@ mod tests {
         // Locate a point inside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
 
+        // Edge cases
+        assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), None);
+        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), None);
+
+        // Corner cases
+        // NOTE: These should probably get located inside the triangle
+        assert_eq!(trap_map.locate_one(&[0., 0.]), None);
+        assert_eq!(trap_map.locate_one(&[1., 0.]), None);
+        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), None);
+
         // Locate points outside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
         assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
@@ -991,12 +1002,24 @@ mod tests {
 
         let trap_map = TrapMap::from_mesh(mesh).build();
 
-        // Locate a point inside the square
+        // Locate points inside the square
         assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
         assert_eq!(trap_map.locate_one(&[0.1, 0.1]), Some(0));
         assert_eq!(trap_map.locate_one(&[0.1, 0.9]), Some(0));
         assert_eq!(trap_map.locate_one(&[0.9, 0.9]), Some(0));
         assert_eq!(trap_map.locate_one(&[0.9, 0.1]), Some(0));
+
+        // Edge cases
+        assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0., 0.5]), Some(0));
+        assert_eq!(trap_map.locate_one(&[1., 0.5]), None);
+        assert_eq!(trap_map.locate_one(&[0.5, 1.]), None);
+
+        // Corner cases
+        assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[1., 0.]), None);
+        assert_eq!(trap_map.locate_one(&[1., 1.]), None);
+        assert_eq!(trap_map.locate_one(&[0., 1.]), None);
 
         // Locate points outside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // south
