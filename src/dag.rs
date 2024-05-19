@@ -29,7 +29,7 @@ impl<T> Dag<T> {
     }
 
     /// Returns the number of nodes in the DAG.
-    fn count(&self) -> usize {
+    pub(crate) fn count(&self) -> usize {
         self.arena.len()
     }
 
@@ -91,22 +91,26 @@ pub(crate) struct Entry<'a, T> {
 }
 
 impl<T> Entry<'_, T> {
-    /// Appends a new [`Node`] with given data to the entry, if it exists.
-    pub(crate) fn append(&mut self, data: T) -> Option<usize> {
+    /// Creates and appends a new [`Node`] with given data to the entry, if it exists.
+    pub(crate) fn append_new(&mut self, data: T) -> Option<usize> {
         let dag = &mut self.dag;
-        let idx = self.idx;
         let new_idx = dag.add(data);
-        if let Some(node) = dag.arena.get_mut(idx) {
-            node.children.push(new_idx);
-            dag.arena[new_idx].parents.push(idx);
-            Some(new_idx)
+        self.append(new_idx)
+    }
+
+    /// Appends an existing [`Node`] to the entry, if it exists.
+    pub(crate) fn append(&mut self, idx: usize) -> Option<usize> {
+        if let Some(node) = self.dag.get_mut(idx) {
+            node.parents.push(self.idx);
+            self.dag.arena[self.idx].children.push(idx);
+            Some(idx)
         } else {
             None
         }
     }
 
-    /// Prepends a new [`Node`] with given data to the entry, if it exists.
-    pub(crate) fn prepend(&mut self, data: T) -> Option<usize> {
+    /// Creates and prepends a new [`Node`] with given data to the entry, if it exists.
+    pub(crate) fn prepend_new(&mut self, data: T) -> Option<usize> {
         let dag = &mut self.dag;
         let idx = self.idx;
         let new_idx = dag.add(data);
@@ -143,7 +147,7 @@ pub(crate) struct Entries<'a, T> {
 }
 
 impl<T> Entries<'_, T> {
-    /// Appends a new [`Node`] with given data to multiple entries, if they all exist.
+    /// Creates and appends a new [`Node`] with given data to multiple entries, if they all exist.
     pub(crate) fn append(&mut self, data: T) -> Option<usize> {
         let dag = &mut self.dag;
         let idxs = self.idxs;
@@ -211,7 +215,7 @@ mod tests {
 
         let idx = dag
             .entry(idx0)
-            .prepend(314)
+            .prepend_new(314)
             .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 1);
@@ -230,7 +234,7 @@ mod tests {
 
         let idx = dag
             .entry(idx0)
-            .prepend(314)
+            .prepend_new(314)
             .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 1);
@@ -256,7 +260,7 @@ mod tests {
 
         let idx = dag
             .entry(idx2)
-            .prepend(314)
+            .prepend_new(314)
             .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 3);

@@ -25,7 +25,7 @@ pub(crate) struct Vertex {
     hedge: HedgeId,
 }
 
-trait IsRightOf<Rhs = Self> {
+pub(crate) trait IsRightOf<Rhs = Self> {
     fn is_right_of(&self, other: &Rhs) -> bool;
 }
 
