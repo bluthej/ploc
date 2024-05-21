@@ -23,7 +23,7 @@ use anyhow::{anyhow, Result};
 /// It does have the advantage of allowing both single cell and mixed cell type topologies
 /// (see the above link to the axom documentation).
 #[derive(Debug, Clone)]
-pub(crate) struct Mesh {
+pub struct Mesh {
     points: Vec<[f64; 2]>,
     cells: Vec<usize>,
     offsets: Offsets,
@@ -151,14 +151,7 @@ impl Mesh {
     }
 
     /// Constructs a rectilinear [`Mesh`].
-    pub(crate) fn grid(
-        xmin: f64,
-        xmax: f64,
-        ymin: f64,
-        ymax: f64,
-        nx: usize,
-        ny: usize,
-    ) -> Result<Self> {
+    pub fn grid(xmin: f64, xmax: f64, ymin: f64, ymax: f64, nx: usize, ny: usize) -> Result<Self> {
         if nx == 0 || ny == 0 {
             return Err(anyhow!(
                 "Constructing a grid requires that both `nx` and `ny` be positive. Got {} and {}.",

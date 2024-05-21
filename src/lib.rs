@@ -9,13 +9,15 @@ use anyhow::{anyhow, Result};
 use dag::Dag;
 use dcel::{Dcel, HedgeId, IsRightOf, VertexId};
 use itertools::Itertools;
-use mesh::Mesh;
+pub use mesh::Mesh;
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 use winding_number::Positioning;
 
 use crate::winding_number::Point;
 
 /// A trait to locate one or several query points within a mesh.
-trait PointLocator {
+pub trait PointLocator {
     /// Locates one query point within a mesh.
     ///
     /// Returns [`None`] if the query point does not lie in any cell of the mesh.
@@ -27,7 +29,7 @@ trait PointLocator {
     }
 }
 
-struct TrapMap {
+pub struct TrapMap {
     dcel: Dcel,
     dag: Dag<Node>,
     bbox: BoundingBox,
@@ -119,7 +121,7 @@ impl TrapMap {
         Self::from_dcel(dcel)
     }
 
-    fn from_mesh(mesh: Mesh) -> Self {
+    pub fn from_mesh(mesh: Mesh) -> Self {
         let dcel = Dcel::from_mesh(mesh);
         Self::from_dcel(dcel)
     }
@@ -203,10 +205,14 @@ impl TrapMap {
         );
     }
 
-    fn build(mut self) -> Self {
+    pub fn build(mut self) -> Self {
         let hedge_count = self.dcel.hedge_count();
-        // Last 8 half-edges are for the bounding box, so we always have at least 8 half-edges
-        for hid in (0..(hedge_count - 8)).map(HedgeId) {
+        // Mix the edges to get good performance (this is a randomized incremental algorithm after all!)
+        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        // Last 8 half-edges are for the bounding box and two of them have already been added
+        let mut hedge_indices: Vec<_> = (0..(hedge_count - 8)).collect();
+        hedge_indices.shuffle(&mut rng);
+        for hid in hedge_indices.into_iter().map(HedgeId) {
             if self.dcel.points_right(hid) {
                 self.add_edge(hid);
             }
@@ -215,8 +221,6 @@ impl TrapMap {
     }
 
     fn add_edge(&mut self, hedge_id: HedgeId) {
-        self.print_stats();
-
         let hedge = self.dcel.get_hedge(hedge_id);
         let twin = self.dcel.get_hedge(hedge.twin);
         let p = hedge.origin;
@@ -531,9 +535,6 @@ impl TrapMap {
                 );
             }
         }
-
-        self.print_stats();
-        println!()
     }
 
     fn connect_lower_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
@@ -576,10 +577,7 @@ impl TrapMap {
         let mut dj = d0;
         let mut trap = self.dag.get(dj).unwrap().data.get_trap();
         let mut rightp = self.dcel.get_vertex(trap.rightp);
-        let mut counter = 1;
         while q.is_right_of(rightp) {
-            counter += 1;
-            println!("At least {} traps are intersected", counter);
             let rightp_above_s = !matches!(
                 Point::from(rightp.coords).position(p.coords, q.coords),
                 Positioning::Right
@@ -711,7 +709,7 @@ impl PointLocator for TrapMap {
 }
 
 /// A point locator for a rectilinear grid.
-struct RectilinearLocator {
+pub struct RectilinearLocator {
     x: Vec<f64>,
     y: Vec<f64>,
 }
@@ -720,7 +718,7 @@ impl RectilinearLocator {
     /// Constructs a new `RectilinearLocator`.
     ///
     /// Fails if either the `x` or `y` vector is not sorted and strictly increasing.
-    fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Self> {
+    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Self> {
         for z in [&x, &y] {
             if z.iter().tuple_windows().any(|(z1, z2)| z1 >= z2) {
                 return Err(anyhow!("The input values should be strictly increasing."));
