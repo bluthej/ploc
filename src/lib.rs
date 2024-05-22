@@ -12,6 +12,7 @@ use itertools::Itertools;
 pub use mesh::Mesh;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use rayon::prelude::*;
 use winding_number::Positioning;
 
 use crate::winding_number::Point;
@@ -26,6 +27,17 @@ pub trait PointLocator {
     /// Locates several query points within a mesh.
     fn locate_many(&self, points: &[[f64; 2]]) -> Vec<Option<usize>> {
         points.iter().map(|point| self.locate_one(point)).collect()
+    }
+
+    /// Locates several query points within a mesh in parallel.
+    fn par_locate_many(&self, points: &[[f64; 2]]) -> Vec<Option<usize>>
+    where
+        Self: std::marker::Sync,
+    {
+        points
+            .par_iter()
+            .map(|point| self.locate_one(point))
+            .collect()
     }
 }
 
@@ -208,7 +220,7 @@ impl TrapMap {
     pub fn build(mut self) -> Self {
         let hedge_count = self.dcel.hedge_count();
         // Mix the edges to get good performance (this is a randomized incremental algorithm after all!)
-        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
         // Last 8 half-edges are for the bounding box and two of them have already been added
         let mut hedge_indices: Vec<_> = (0..(hedge_count - 8)).collect();
         hedge_indices.shuffle(&mut rng);
