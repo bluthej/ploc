@@ -124,11 +124,7 @@ impl Mesh {
     ///
     /// The offsets are stored implicitly, which leads to less memory usage, but this is only
     /// possible for single cell type topologies.
-    pub(crate) fn with_stride(
-        points: Vec<[f64; 2]>,
-        cells: Vec<usize>,
-        stride: usize,
-    ) -> Result<Self> {
+    pub fn with_stride(points: Vec<[f64; 2]>, cells: Vec<usize>, stride: usize) -> Result<Self> {
         Self::check_ids(points.len(), &cells)?;
 
         if cells.is_empty() && stride > 0 {
