@@ -1,4 +1,4 @@
-from py_ploc import TrapMap
+from ploc import TrapMap
 import numpy as np
 from matplotlib.tri import Triangulation, TrapezoidMapTriFinder
 

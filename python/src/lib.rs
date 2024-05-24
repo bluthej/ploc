@@ -1,9 +1,9 @@
 use numpy::{ndarray::Array, PyArrayDyn, PyReadonlyArray2};
-use ploc::PointLocator;
+use ploc_rs::PointLocator;
 use pyo3::prelude::*;
 
 #[pyclass]
-struct TrapMap(ploc::TrapMap);
+struct TrapMap(ploc_rs::TrapMap);
 
 #[pymethods]
 impl TrapMap {
@@ -14,8 +14,8 @@ impl TrapMap {
         let nf = cells.shape()[1];
         let cells: Vec<_> = cells.iter().map(|&i| i as usize).collect();
         let points: Vec<[f64; 2]> = points.outer_iter().map(|row| [row[0], row[1]]).collect();
-        let mesh = ploc::Mesh::with_stride(points, cells, nf).unwrap();
-        Self(ploc::TrapMap::from_mesh(mesh).build())
+        let mesh = ploc_rs::Mesh::with_stride(points, cells, nf).unwrap();
+        Self(ploc_rs::TrapMap::from_mesh(mesh).build())
     }
 
     fn locate_many<'py>(
@@ -47,7 +47,7 @@ impl TrapMap {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn py_ploc(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn ploc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TrapMap>()?;
     Ok(())
 }
