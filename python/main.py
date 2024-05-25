@@ -1,4 +1,4 @@
-from ploc import TrapMap
+from ploc import TrapMap, Method
 import numpy as np
 from matplotlib.tri import Triangulation, TrapezoidMapTriFinder
 
@@ -15,4 +15,5 @@ tm = TrapMap(points, triangles)
 query = np.array([[0.1, 0.1], [0.2, 0.3]])
 x_query, y_query = query.T
 print(tm.locate_many(query))
+print(tm.locate_many(query, Method.PARALLEL))
 print(mpl_tm(x_query, y_query))

@@ -5,6 +5,14 @@ use pyo3::prelude::*;
 #[pyclass]
 struct TrapMap(ploc_rs::TrapMap);
 
+#[pyclass(rename_all = "UPPERCASE")]
+#[derive(Clone)]
+enum Method {
+    Sequential,
+    Parallel,
+    Auto,
+}
+
 #[pymethods]
 impl TrapMap {
     #[new]
@@ -22,23 +30,19 @@ impl TrapMap {
         &self,
         py: Python<'py>,
         query: PyReadonlyArray2<'_, f64>,
+        method: Option<Method>,
     ) -> Bound<'py, PyArrayDyn<isize>> {
-        let query = query.as_array();
-        let query: Vec<[f64; 2]> = query.outer_iter().map(|row| [row[0], row[1]]).collect();
-        let res = self.0.locate_many(&query);
-        let res =
-            Array::from_iter(res.iter().map(|r| r.map(|i| i as isize).unwrap_or(-1))).into_dyn();
-        PyArrayDyn::from_owned_array_bound(py, res)
-    }
+        let method = method.unwrap_or(Method::Sequential);
 
-    fn par_locate_many<'py>(
-        &self,
-        py: Python<'py>,
-        query: PyReadonlyArray2<'_, f64>,
-    ) -> Bound<'py, PyArrayDyn<isize>> {
         let query = query.as_array();
         let query: Vec<[f64; 2]> = query.outer_iter().map(|row| [row[0], row[1]]).collect();
-        let res = self.0.par_locate_many(&query);
+
+        let res = match method {
+            Method::Sequential => self.0.locate_many(&query),
+            Method::Parallel => self.0.par_locate_many(&query),
+            Method::Auto => todo!("This should determine heuristically whether to use the sequential or parallel version based on the size of the query"),
+        };
+
         let res =
             Array::from_iter(res.iter().map(|r| r.map(|i| i as isize).unwrap_or(-1))).into_dyn();
         PyArrayDyn::from_owned_array_bound(py, res)
@@ -49,5 +53,6 @@ impl TrapMap {
 #[pymodule]
 fn ploc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TrapMap>()?;
+    m.add_class::<Method>()?;
     Ok(())
 }
