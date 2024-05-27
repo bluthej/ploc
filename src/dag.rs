@@ -64,6 +64,21 @@ impl<T> Dag<T> {
     pub(crate) fn entries<'a>(&'a mut self, idxs: &'a [usize]) -> Entries<'a, T> {
         Entries { idxs, dag: self }
     }
+
+    pub(crate) fn depth(&self, idx: usize) -> Option<usize> {
+        (idx < self.arena.len()).then_some({
+            let parents = &self.get(idx).expect("Should be valid").parents;
+            if parents.is_empty() {
+                0
+            } else {
+                1 + parents
+                    .iter()
+                    .map(|&p| self.depth(p).expect("Should return something"))
+                    .min()
+                    .unwrap()
+            }
+        })
+    }
 }
 
 /// A node of the DAG.
@@ -191,10 +206,12 @@ mod tests {
         let idx = dag.add(42);
         assert_eq!(idx, 0);
         assert_eq!(dag.count(), 1);
+        assert_eq!(dag.depth(idx), Some(0));
 
         let idx = dag.add(314);
         assert_eq!(idx, 1);
         assert_eq!(dag.count(), 2);
+        assert_eq!(dag.depth(idx), Some(0));
     }
 
     #[test]
@@ -223,6 +240,9 @@ mod tests {
         assert!(dag.get(idx0).unwrap().parents.is_empty());
         assert_eq!(dag.get(idx).unwrap().parents, &[idx0]);
         assert!(dag.get(idx).unwrap().children.is_empty());
+
+        assert_eq!(dag.depth(idx0), Some(0));
+        assert_eq!(dag.depth(idx), Some(1));
 
         Ok(())
     }
@@ -270,6 +290,11 @@ mod tests {
         assert_eq!(dag.get(idx).unwrap().data, 16);
         assert_eq!(dag.get(idx).unwrap().parents, &[idx2]);
         assert!(dag.get(idx).unwrap().children.is_empty());
+
+        assert_eq!(dag.depth(idx0), Some(0));
+        assert_eq!(dag.depth(idx1), Some(0));
+        assert_eq!(dag.depth(idx2), Some(1));
+        assert_eq!(dag.depth(idx), Some(2));
 
         Ok(())
     }

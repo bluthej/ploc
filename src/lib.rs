@@ -9,13 +9,12 @@ use anyhow::{anyhow, Result};
 use dag::Dag;
 use dcel::{Dcel, HedgeId, IsRightOf, VertexId};
 use itertools::Itertools;
-pub use mesh::Mesh;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
-use winding_number::Positioning;
 
-use crate::winding_number::Point;
+pub use mesh::Mesh;
+use winding_number::{Point, Positioning};
 
 /// A trait to locate one or several query points within a mesh.
 pub trait PointLocator {
@@ -209,12 +208,36 @@ impl TrapMap {
         )
     }
 
-    fn print_stats(&self) {
+    pub fn print_stats(&self) {
         let (x_node_count, y_node_count, trap_count) = self.node_count();
         println!(
             "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
             x_node_count, y_node_count, trap_count,
         );
+        println!();
+        let (avg, max) = self.depth_stats();
+        println!("Depth:\n\tmax {}\n\taverage {}", max, avg);
+    }
+
+    pub fn depth_stats(&self) -> (f64, usize) {
+        let mut trap_count = 0;
+        let mut avg = 0;
+        let mut max = 0;
+        for (idx, node) in self.dag.iter().enumerate() {
+            if matches!(node.data, Node::Trap(..)) {
+                trap_count += 1;
+                let depth = self
+                    .dag
+                    .depth(idx)
+                    .expect("Should be in the DAG and have a depth");
+                avg += depth;
+                if depth > max {
+                    max = depth;
+                }
+            }
+        }
+        let avg = avg as f64 / trap_count as f64;
+        (avg, max)
     }
 
     pub fn build(mut self) -> Self {
@@ -533,20 +556,6 @@ impl TrapMap {
                 left_below = Some(below_idx);
             }
         }
-
-        // Sanity checks
-        for node in self.dag.iter() {
-            assert!(
-                !(node.children.is_empty() && node.parents.is_empty()),
-                "There shouldn't be isolated nodes"
-            );
-            if node.children.is_empty() {
-                assert!(
-                    matches!(node.data, Node::Trap(..)),
-                    "All leaf nodes should be trapezoids"
-                );
-            }
-        }
     }
 
     fn connect_lower_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
@@ -687,6 +696,22 @@ impl TrapMap {
             }
         }
         &self.dag.get(node_id).unwrap().data
+    }
+
+    fn check(&self) {
+        // Sanity checks
+        for node in self.dag.iter() {
+            assert!(
+                !(node.children.is_empty() && node.parents.is_empty()),
+                "There shouldn't be isolated nodes"
+            );
+            if node.children.is_empty() {
+                assert!(
+                    matches!(node.data, Node::Trap(..)),
+                    "All leaf nodes should be trapezoids"
+                );
+            }
+        }
     }
 }
 
