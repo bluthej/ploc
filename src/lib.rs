@@ -12,6 +12,7 @@ use itertools::Itertools;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
+use std::cmp::Ordering;
 
 pub use mesh::Mesh;
 use winding_number::{Point, Positioning};
@@ -672,22 +673,16 @@ impl TrapMap {
             match &node.data {
                 Node::Trap(..) => break,
                 Node::X(vid) => {
-                    let vert = &self.dcel.get_vertex(*vid);
-                    if vert.coords[0] == point[0] && vert.coords[1] == point[1] {
-                        break;
-                    }
-                    if point.is_right_of(vert) {
-                        node_id = node.children[1];
-                    } else {
-                        node_id = node.children[0];
-                    }
+                    let [x, y] = self.dcel.get_vertex(*vid).coords;
+                    match point[0].total_cmp(&x).then_with(|| point[1].total_cmp(&y)) {
+                        Ordering::Greater => node_id = node.children[1],
+                        Ordering::Less => node_id = node.children[0],
+                        Ordering::Equal => break,
+                    };
                 }
                 Node::Y(hid) => {
-                    let hedge = self.dcel.get_hedge(*hid);
-                    let twin = self.dcel.get_hedge(hedge.twin);
-                    let p1: &[f64; 2] = &self.dcel.get_vertex(hedge.origin).coords;
-                    let p2: &[f64; 2] = &self.dcel.get_vertex(twin.origin).coords;
-                    match Point::from(point).position(*p1, *p2) {
+                    let (p1, p2) = self.dcel.get_endpoints(*hid);
+                    match Point::from(point).position(p1.coords, p2.coords) {
                         Positioning::Right => node_id = node.children[1],
                         Positioning::Left => node_id = node.children[0],
                         Positioning::On => break,
