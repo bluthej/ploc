@@ -2,7 +2,8 @@ from ploc import TrapMap, Method
 import numpy as np
 from matplotlib.tri import Triangulation, TrapezoidMapTriFinder
 
-x, y = np.meshgrid(np.linspace(0.0, 10.0), np.linspace(0.0, 10.0))
+n = 200
+x, y = np.meshgrid(np.linspace(0.0, 10.0, n), np.linspace(0.0, 10.0, n))
 x = x.ravel()
 y = y.ravel()
 tri = Triangulation(x, y)

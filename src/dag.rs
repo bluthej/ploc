@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use std::slice::Iter;
 
 /// A Directed Acyclic Graph (DAG).
@@ -86,7 +87,7 @@ impl<T> Dag<T> {
 pub(crate) struct Node<T> {
     pub(crate) data: T,
     pub(crate) parents: Vec<usize>,
-    pub(crate) children: Vec<usize>,
+    pub(crate) children: SmallVec<[usize; 2]>,
 }
 
 impl<T> Node<T> {
@@ -94,7 +95,7 @@ impl<T> Node<T> {
         Node {
             data,
             parents: Vec::new(),
-            children: Vec::new(),
+            children: SmallVec::new(),
         }
     }
 }
@@ -236,7 +237,7 @@ mod tests {
             .ok_or(anyhow!("Missing entry"))?;
 
         assert_eq!(idx, 1);
-        assert_eq!(dag.get(idx0).unwrap().children, &[idx]);
+        assert_eq!(dag.get(idx0).unwrap().children.as_slice(), &[idx]);
         assert!(dag.get(idx0).unwrap().parents.is_empty());
         assert_eq!(dag.get(idx).unwrap().parents, &[idx0]);
         assert!(dag.get(idx).unwrap().children.is_empty());
@@ -259,7 +260,7 @@ mod tests {
 
         assert_eq!(idx, 1);
         assert_eq!(dag.get(idx0).unwrap().data, 314);
-        assert_eq!(dag.get(idx0).unwrap().children, &[idx]);
+        assert_eq!(dag.get(idx0).unwrap().children.as_slice(), &[idx]);
         assert!(dag.get(idx0).unwrap().parents.is_empty());
         assert_eq!(dag.get(idx).unwrap().data, 42);
         assert_eq!(dag.get(idx).unwrap().parents, &[idx0]);
@@ -285,7 +286,7 @@ mod tests {
 
         assert_eq!(idx, 3);
         assert_eq!(dag.get(idx2).unwrap().data, 314);
-        assert_eq!(dag.get(idx2).unwrap().children, &[idx]);
+        assert_eq!(dag.get(idx2).unwrap().children.as_slice(), &[idx]);
         assert_eq!(dag.get(idx2).unwrap().parents, &[idx0, idx1]);
         assert_eq!(dag.get(idx).unwrap().data, 16);
         assert_eq!(dag.get(idx).unwrap().parents, &[idx2]);
