@@ -23,7 +23,7 @@ impl TrapMap {
         let cells: Vec<_> = cells.iter().map(|&i| i as usize).collect();
         let points: Vec<[f64; 2]> = points.outer_iter().map(|row| [row[0], row[1]]).collect();
         let mesh = ploc_rs::Mesh::with_stride(points, cells, nf).unwrap();
-        Self(ploc_rs::TrapMap::from_mesh(mesh).build())
+        Self(ploc_rs::TrapMap::from_mesh(mesh))
     }
 
     fn locate_many<'py>(

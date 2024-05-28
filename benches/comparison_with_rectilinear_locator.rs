@@ -15,7 +15,7 @@ fn bench_rect(c: &mut Criterion) {
         .iter()
         .map(|&n| {
             let mesh = Mesh::grid(xmin, xmax, ymin, ymax, n, n).unwrap();
-            TrapMap::from_mesh(mesh).build()
+            TrapMap::from_mesh(mesh)
         })
         .collect();
 

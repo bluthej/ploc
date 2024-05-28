@@ -130,15 +130,33 @@ impl Default for BoundingBox {
 impl TrapMap {
     fn new() -> Self {
         let dcel = Dcel::new();
-        Self::from_dcel(dcel)
+        Self::init_with_dcel(dcel)
     }
 
     pub fn from_mesh(mesh: Mesh) -> Self {
-        let dcel = Dcel::from_mesh(mesh);
-        Self::from_dcel(dcel)
+        let mut trap_map = Self::init_with_mesh(mesh);
+
+        let hedge_count = trap_map.dcel.hedge_count();
+        // Mix the edges to get good performance (this is a randomized incremental algorithm after all!)
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        // Last 8 half-edges are for the bounding box and two of them have already been added
+        let mut hedge_indices: Vec<_> = (0..(hedge_count - 8)).collect();
+        hedge_indices.shuffle(&mut rng);
+        for hid in hedge_indices.into_iter().map(HedgeId) {
+            if trap_map.dcel.points_right(hid) {
+                trap_map.add_edge(hid);
+            }
+        }
+
+        trap_map
     }
 
-    fn from_dcel(dcel: Dcel) -> Self {
+    fn init_with_mesh(mesh: Mesh) -> Self {
+        let dcel = Dcel::from_mesh(mesh);
+        Self::init_with_dcel(dcel)
+    }
+
+    fn init_with_dcel(dcel: Dcel) -> Self {
         let mut dag = Dag::new();
 
         let [xmin, xmax, ymin, ymax] = dcel.get_bounds();
@@ -172,88 +190,6 @@ impl TrapMap {
         )));
 
         Self { dcel, dag, bbox }
-    }
-
-    fn x_node_count(&self) -> usize {
-        self.dag
-            .iter()
-            .filter(|&node| matches!(node.data, Node::X(..)))
-            .count()
-    }
-
-    fn y_node_count(&self) -> usize {
-        self.dag
-            .iter()
-            .filter(|&node| matches!(node.data, Node::Y(..)))
-            .count()
-    }
-
-    fn trap_count(&self) -> usize {
-        self.dag
-            .iter()
-            .filter(|&node| matches!(node.data, Node::Trap(..)))
-            .count()
-    }
-
-    fn node_count(&self) -> (usize, usize, usize) {
-        self.dag.iter().fold(
-            (0, 0, 0),
-            |(mut x_count, mut y_count, mut trap_count), node| {
-                match node.data {
-                    Node::X(..) => x_count += 1,
-                    Node::Y(..) => y_count += 1,
-                    Node::Trap(..) => trap_count += 1,
-                };
-                (x_count, y_count, trap_count)
-            },
-        )
-    }
-
-    pub fn print_stats(&self) {
-        let (x_node_count, y_node_count, trap_count) = self.node_count();
-        println!(
-            "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
-            x_node_count, y_node_count, trap_count,
-        );
-        println!();
-        let (avg, max) = self.depth_stats();
-        println!("Depth:\n\tmax {}\n\taverage {}", max, avg);
-    }
-
-    pub fn depth_stats(&self) -> (f64, usize) {
-        let mut trap_count = 0;
-        let mut avg = 0;
-        let mut max = 0;
-        for (idx, node) in self.dag.iter().enumerate() {
-            if matches!(node.data, Node::Trap(..)) {
-                trap_count += 1;
-                let depth = self
-                    .dag
-                    .depth(idx)
-                    .expect("Should be in the DAG and have a depth");
-                avg += depth;
-                if depth > max {
-                    max = depth;
-                }
-            }
-        }
-        let avg = avg as f64 / trap_count as f64;
-        (avg, max)
-    }
-
-    pub fn build(mut self) -> Self {
-        let hedge_count = self.dcel.hedge_count();
-        // Mix the edges to get good performance (this is a randomized incremental algorithm after all!)
-        let mut rng = ChaCha8Rng::seed_from_u64(1234);
-        // Last 8 half-edges are for the bounding box and two of them have already been added
-        let mut hedge_indices: Vec<_> = (0..(hedge_count - 8)).collect();
-        hedge_indices.shuffle(&mut rng);
-        for hid in hedge_indices.into_iter().map(HedgeId) {
-            if self.dcel.points_right(hid) {
-                self.add_edge(hid);
-            }
-        }
-        self
     }
 
     fn add_edge(&mut self, hedge_id: HedgeId) {
@@ -708,6 +644,73 @@ impl TrapMap {
             }
         }
     }
+
+    fn x_node_count(&self) -> usize {
+        self.dag
+            .iter()
+            .filter(|&node| matches!(node.data, Node::X(..)))
+            .count()
+    }
+
+    fn y_node_count(&self) -> usize {
+        self.dag
+            .iter()
+            .filter(|&node| matches!(node.data, Node::Y(..)))
+            .count()
+    }
+
+    fn trap_count(&self) -> usize {
+        self.dag
+            .iter()
+            .filter(|&node| matches!(node.data, Node::Trap(..)))
+            .count()
+    }
+
+    fn node_count(&self) -> (usize, usize, usize) {
+        self.dag.iter().fold(
+            (0, 0, 0),
+            |(mut x_count, mut y_count, mut trap_count), node| {
+                match node.data {
+                    Node::X(..) => x_count += 1,
+                    Node::Y(..) => y_count += 1,
+                    Node::Trap(..) => trap_count += 1,
+                };
+                (x_count, y_count, trap_count)
+            },
+        )
+    }
+
+    pub fn print_stats(&self) {
+        let (x_node_count, y_node_count, trap_count) = self.node_count();
+        println!(
+            "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
+            x_node_count, y_node_count, trap_count,
+        );
+        println!();
+        let (avg, max) = self.depth_stats();
+        println!("Depth:\n\tmax {}\n\taverage {}", max, avg);
+    }
+
+    pub fn depth_stats(&self) -> (f64, usize) {
+        let mut trap_count = 0;
+        let mut avg = 0;
+        let mut max = 0;
+        for (idx, node) in self.dag.iter().enumerate() {
+            if matches!(node.data, Node::Trap(..)) {
+                trap_count += 1;
+                let depth = self
+                    .dag
+                    .depth(idx)
+                    .expect("Should be in the DAG and have a depth");
+                avg += depth;
+                if depth > max {
+                    max = depth;
+                }
+            }
+        }
+        let avg = avg as f64 / trap_count as f64;
+        (avg, max)
+    }
 }
 
 impl PointLocator for TrapMap {
@@ -814,7 +817,7 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let cells = vec![0, 1, 2, 3];
         let mesh = Mesh::with_stride(points, cells, 4)?;
-        let trap_map = TrapMap::from_mesh(mesh);
+        let trap_map = TrapMap::init_with_mesh(mesh);
 
         let bbox = trap_map.bbox;
 
@@ -836,7 +839,7 @@ mod tests {
         let second = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
         let third = dcel.get_hedge(HedgeId(2)).twin; // Need to get the twin of 2 so that it points to the right
 
-        let mut trap_map = TrapMap::from_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_dcel(dcel);
 
         // Add the first edge
         trap_map.add_edge(first);
@@ -875,7 +878,7 @@ mod tests {
         let second = HedgeId(0);
         let third = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
 
-        let mut trap_map = TrapMap::from_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_dcel(dcel);
 
         // Add the first edge
         trap_map.add_edge(first);
@@ -915,7 +918,7 @@ mod tests {
         let third = dcel.get_hedge(HedgeId(3)).twin;
         let fourth = HedgeId(2);
 
-        let mut trap_map = TrapMap::from_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_dcel(dcel);
 
         // Add the first edge
         trap_map.add_edge(first);
@@ -958,7 +961,7 @@ mod tests {
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
 
-        let trap_map = TrapMap::from_mesh(mesh).build();
+        let trap_map = TrapMap::from_mesh(mesh);
 
         // Locate a point inside the triangle
         assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
@@ -993,7 +996,7 @@ mod tests {
         let second = HedgeId(0);
         let third = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
 
-        let mut trap_map = TrapMap::from_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_dcel(dcel);
 
         // Add the edges
         trap_map.add_edge(first);
@@ -1024,7 +1027,7 @@ mod tests {
         let third = dcel.get_hedge(HedgeId(3)).twin;
         let fourth = HedgeId(2);
 
-        let mut trap_map = TrapMap::from_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_dcel(dcel);
 
         // Add the edges
         trap_map.add_edge(first);
@@ -1050,7 +1053,7 @@ mod tests {
         let cells = vec![0, 1, 2, 3];
         let mesh = Mesh::with_stride(points, cells, 4)?;
 
-        let trap_map = TrapMap::from_mesh(mesh).build();
+        let trap_map = TrapMap::from_mesh(mesh);
 
         // Locate points inside the square
         assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
@@ -1088,7 +1091,7 @@ mod tests {
     fn locate_points_in_grid() -> Result<()> {
         let mesh = Mesh::grid(0., 1., 0., 1., 2, 2)?;
 
-        let trap_map = TrapMap::from_mesh(mesh).build();
+        let trap_map = TrapMap::from_mesh(mesh);
 
         // Locate points in different cells
         assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
@@ -1281,7 +1284,7 @@ mod tests {
 
         // Create trapezoidal map
         let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny)?;
-        let locator = TrapMap::from_mesh(mesh).build();
+        let locator = TrapMap::from_mesh(mesh);
 
         // Recreate `Mesh` to check the results using the winding number
         let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny)?;
