@@ -7,7 +7,7 @@ mod winding_number;
 
 use anyhow::{anyhow, Result};
 use dag::Dag;
-use dcel::{Dcel, HedgeId, IsRightOf, VertexId};
+use dcel::{Dcel, FaceId, HedgeId, IsRightOf, VertexId};
 use itertools::Itertools;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -51,7 +51,12 @@ pub struct TrapMap {
 #[derive(Clone)]
 enum Node {
     X(VertexId),
-    Y(HedgeId),
+    Y {
+        hedge_id: HedgeId,
+        p: VertexId,
+        q: VertexId,
+        face: FaceId,
+    },
     Trap(Trapezoid),
 }
 
@@ -197,6 +202,7 @@ impl TrapMap {
         let twin = self.dcel.get_hedge(hedge.twin);
         let p = hedge.origin;
         let q = twin.origin;
+        let face = hedge.face.unwrap_or_else(|| twin.face.unwrap());
 
         let mut left_old = None;
         let mut left_below = None;
@@ -456,14 +462,24 @@ impl TrapMap {
                     let si = self
                         .dag
                         .entry(qi)
-                        .append_new(Node::Y(hedge_id))
+                        .append_new(Node::Y {
+                            hedge_id,
+                            p,
+                            q,
+                            face,
+                        })
                         .expect("This should be a valid node");
                     self.dag.entry(qi).append(right_idx);
                     si
                 } else {
                     self.dag
                         .entry(pi)
-                        .append_new(Node::Y(hedge_id))
+                        .append_new(Node::Y {
+                            hedge_id,
+                            p,
+                            q,
+                            face,
+                        })
                         .expect("This should be a valid node")
                 }
             } else if let Some(idx) = right_idx {
@@ -472,15 +488,25 @@ impl TrapMap {
                 let si = self
                     .dag
                     .entry(qi)
-                    .append_new(Node::Y(hedge_id))
+                    .append_new(Node::Y {
+                        hedge_id,
+                        p,
+                        q,
+                        face,
+                    })
                     .expect("This should be a valid node");
                 self.dag.entry(qi).append(idx);
                 si
             } else {
                 let si = old_trap_idx;
-                self.dag
-                    .entry(si)
-                    .and_modify(|node| *node = Node::Y(hedge_id));
+                self.dag.entry(si).and_modify(|node| {
+                    *node = Node::Y {
+                        hedge_id,
+                        p,
+                        q,
+                        face,
+                    }
+                });
                 si
             };
             self.dag.entry(si).append(above_idx);
@@ -570,25 +596,27 @@ impl TrapMap {
                 Node::Trap(..) => break,
                 Node::X(vid) => {
                     let vert = &self.dcel.get_vertex(*vid);
-                    let left = !(&p == vid || xy.is_right_of(vert));
+                    let left = !(p == *vid || xy.is_right_of(vert));
                     d0 = if left {
                         node.children[0]
                     } else {
                         node.children[1]
                     };
                 }
-                Node::Y(hid) => {
-                    let si = self.dcel.get_hedge(*hid);
-                    let pi = si.origin;
-                    let qi = self.dcel.get_hedge(si.twin).origin;
-                    let above = if p == pi {
+                Node::Y {
+                    hedge_id: hid,
+                    p: pi,
+                    q: qi,
+                    face: _,
+                } => {
+                    let above = if &p == pi {
                         // s and si share their left endpoint, so we compare the slopes
                         slope > self.dcel.slope(*hid)
                     } else {
                         // s and si share have different left endpoints, so we look at the position
                         // of p with respect to the segment (pi, qi)
-                        let xy_pi = self.dcel.get_vertex(pi).coords;
-                        let xy_qi = self.dcel.get_vertex(qi).coords;
+                        let xy_pi = self.dcel.get_vertex(*pi).coords;
+                        let xy_qi = self.dcel.get_vertex(*qi).coords;
                         !matches!(Point::from(xy).position(xy_pi, xy_qi), Positioning::Right)
                     };
                     d0 = if above {
@@ -616,8 +644,9 @@ impl TrapMap {
                         Ordering::Equal => break,
                     };
                 }
-                Node::Y(hid) => {
-                    let (p1, p2) = self.dcel.get_endpoints(*hid);
+                Node::Y { p, q, .. } => {
+                    let p1 = self.dcel.get_vertex(*p);
+                    let p2 = self.dcel.get_vertex(*q);
                     match Point::from(point).position(p1.coords, p2.coords) {
                         Positioning::Right => node_id = node.children[1],
                         Positioning::Left => node_id = node.children[0],
@@ -655,7 +684,7 @@ impl TrapMap {
     fn y_node_count(&self) -> usize {
         self.dag
             .iter()
-            .filter(|&node| matches!(node.data, Node::Y(..)))
+            .filter(|&node| matches!(node.data, Node::Y { .. }))
             .count()
     }
 
@@ -672,7 +701,7 @@ impl TrapMap {
             |(mut x_count, mut y_count, mut trap_count), node| {
                 match node.data {
                     Node::X(..) => x_count += 1,
-                    Node::Y(..) => y_count += 1,
+                    Node::Y { .. } => y_count += 1,
                     Node::Trap(..) => trap_count += 1,
                 };
                 (x_count, y_count, trap_count)
@@ -727,7 +756,7 @@ impl PointLocator for TrapMap {
             _ => {
                 let hedge_id = match node {
                     Node::X(vertex_id) => self.dcel.get_vertex(*vertex_id).hedge,
-                    Node::Y(hedge_id) => *hedge_id,
+                    Node::Y { hedge_id, .. } => *hedge_id,
                     _ => unreachable!(),
                 };
                 if self.dcel.get_hedge(hedge_id).face.is_some() {
