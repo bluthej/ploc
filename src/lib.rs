@@ -231,8 +231,26 @@ impl Default for BoundingBox {
 
 impl TrapMap {
     fn new() -> Self {
-        let dcel = Dcel::new();
-        Self::init_with_dcel(dcel)
+        Self {
+            dcel: Dcel::new(),
+            dag: Dag::new(),
+            dag2: Dag::new(),
+            vertices: Vec::new(),
+            vertex_faces: Vec::new(),
+            bbox: BoundingBox {
+                xmin: f64::NAN,
+                xmax: f64::NAN,
+                ymin: f64::NAN,
+                ymax: f64::NAN,
+            },
+        }
+    }
+
+    fn empty() -> Self {
+        let mut trap_map = Self::new();
+        let bbox = BoundingBox::default();
+        trap_map.add_bounding_box(bbox);
+        trap_map
     }
 
     pub fn from_mesh(mesh: Mesh) -> Self {
@@ -253,7 +271,7 @@ impl TrapMap {
         trap_map
     }
 
-    fn new2(mesh: Mesh) -> Self {
+    fn from_mesh_2(mesh: Mesh) -> Self {
         let n_edges = mesh.facet_count();
         let n_vertices = mesh.vertex_count();
         let mut edges = Vec::with_capacity(n_edges);
@@ -292,15 +310,22 @@ impl TrapMap {
         }
         let vertex_faces: Vec<usize> = vertex_faces.iter().map(|f| f.unwrap()).collect();
 
-        let nv = mesh.vertex_count();
-        let mut vertices: Vec<_> = (0..nv).map(|idx| mesh.coords(idx)).collect();
+        let mut trap_map = TrapMap::init_with_mesh_2(mesh);
+        trap_map.vertex_faces = vertex_faces;
 
-        let bbox = BoundingBox::from_mesh(&mesh);
-        vertices.push([bbox.xmin, bbox.ymin]);
-        vertices.push([bbox.xmax, bbox.ymin]);
+        for edge in edges {
+            trap_map.add_edge_2(edge);
+        }
 
-        let mut dag = Dag::new();
-        dag.add(Node2::Trap(Trapezoid2::new(
+        trap_map
+    }
+
+    fn add_bounding_box(&mut self, bbox: BoundingBox) {
+        let nv = self.vertices.len();
+        self.vertices.push([bbox.xmin, bbox.ymin]);
+        self.vertices.push([bbox.xmax, bbox.ymin]);
+
+        self.dag2.add(Node2::Trap(Trapezoid2::new(
             nv,
             nv + 1,
             Edge {
@@ -314,26 +339,25 @@ impl TrapMap {
                 face: usize::MAX,
             },
         )));
-
-        let mut trap_map = TrapMap {
-            dcel: Dcel::new(),
-            dag: Dag::new(),
-            dag2: dag,
-            vertices,
-            vertex_faces,
-            bbox,
-        };
-
-        for edge in edges {
-            trap_map.add_edge_2(edge);
-        }
-
-        trap_map
     }
 
     fn init_with_mesh(mesh: Mesh) -> Self {
         let dcel = Dcel::from_mesh(mesh);
         Self::init_with_dcel(dcel)
+    }
+
+    fn init_with_mesh_2(mesh: Mesh) -> Self {
+        let nv = mesh.vertex_count();
+        let vertices: Vec<_> = (0..nv).map(|idx| mesh.coords(idx)).collect();
+
+        let bbox = BoundingBox::from_mesh(&mesh);
+
+        let mut trap_map = TrapMap::new();
+
+        trap_map.vertices = vertices;
+        trap_map.add_bounding_box(bbox);
+
+        trap_map
     }
 
     fn init_with_dcel(dcel: Dcel) -> Self {
@@ -1294,34 +1318,34 @@ impl TrapMap {
     }
 
     fn x_node_count(&self) -> usize {
-        self.dag
+        self.dag2
             .iter()
-            .filter(|&node| matches!(node.data, Node::X(..)))
+            .filter(|&node| matches!(node.data, Node2::X(..)))
             .count()
     }
 
     fn y_node_count(&self) -> usize {
-        self.dag
+        self.dag2
             .iter()
-            .filter(|&node| matches!(node.data, Node::Y { .. }))
+            .filter(|&node| matches!(node.data, Node2::Y { .. }))
             .count()
     }
 
     fn trap_count(&self) -> usize {
-        self.dag
+        self.dag2
             .iter()
-            .filter(|&node| matches!(node.data, Node::Trap(..)))
+            .filter(|&node| matches!(node.data, Node2::Trap(..)))
             .count()
     }
 
     fn node_count(&self) -> (usize, usize, usize) {
-        self.dag.iter().fold(
+        self.dag2.iter().fold(
             (0, 0, 0),
             |(mut x_count, mut y_count, mut trap_count), node| {
                 match node.data {
-                    Node::X(..) => x_count += 1,
-                    Node::Y { .. } => y_count += 1,
-                    Node::Trap(..) => trap_count += 1,
+                    Node2::X(..) => x_count += 1,
+                    Node2::Y { .. } => y_count += 1,
+                    Node2::Trap(..) => trap_count += 1,
                 };
                 (x_count, y_count, trap_count)
             },
@@ -1343,8 +1367,8 @@ impl TrapMap {
         let mut trap_count = 0;
         let mut avg = 0;
         let mut max = 0;
-        for (idx, node) in self.dag.iter().enumerate() {
-            if matches!(node.data, Node::Trap(..)) {
+        for (idx, node) in self.dag2.iter().enumerate() {
+            if matches!(node.data, Node2::Trap(..)) {
                 trap_count += 1;
                 let depth = self
                     .dag
@@ -1463,18 +1487,18 @@ mod tests {
 
     #[test]
     fn initialize_empty_trapezoidal_map() {
-        let trap_map = TrapMap::new();
+        let trap_map = TrapMap::empty();
 
         assert_eq!(trap_map.trap_count(), 1);
     }
 
     #[test]
     fn locate_one_in_empty_trapezoidal_map() {
-        let trap_map = TrapMap::new();
+        let trap_map = TrapMap::empty();
 
         let point = [0., 0.];
 
-        assert_eq!(trap_map.locate_one(&point), None);
+        assert_eq!(trap_map.locate_one_2(&point), None);
     }
 
     #[test]
@@ -1499,15 +1523,26 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
-        let dcel = Dcel::from_mesh(mesh);
-        let first = HedgeId(0);
-        let second = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
-        let third = dcel.get_hedge(HedgeId(2)).twin; // Need to get the twin of 2 so that it points to the right
+        let first = Edge {
+            p: 0,
+            q: 1,
+            face: 0,
+        };
+        let second = Edge {
+            p: 2,
+            q: 1,
+            face: 0,
+        };
+        let third = Edge {
+            p: 0,
+            q: 2,
+            face: 0,
+        };
 
-        let mut trap_map = TrapMap::init_with_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_mesh_2(mesh);
 
         // Add the first edge
-        trap_map.add_edge(first);
+        trap_map.add_edge_2(first);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 4);
@@ -1515,7 +1550,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 1);
 
         // Add the second edge
-        trap_map.add_edge(second);
+        trap_map.add_edge_2(second);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 6);
@@ -1523,7 +1558,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 2);
 
         // Add the third edge
-        trap_map.add_edge(third);
+        trap_map.add_edge_2(third);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 7);
@@ -1538,15 +1573,26 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
-        let dcel = Dcel::from_mesh(mesh);
-        let first = dcel.get_hedge(HedgeId(2)).twin; // Need to get the twin of 2 so that it points to the right
-        let second = HedgeId(0);
-        let third = dcel.get_hedge(HedgeId(1)).twin; // Need to get the twin of 1 so that it points to the right
+        let first = Edge {
+            p: 0,
+            q: 2,
+            face: 0,
+        };
+        let second = Edge {
+            p: 0,
+            q: 1,
+            face: 0,
+        };
+        let third = Edge {
+            p: 2,
+            q: 1,
+            face: 0,
+        };
 
-        let mut trap_map = TrapMap::init_with_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_mesh_2(mesh);
 
         // Add the first edge
-        trap_map.add_edge(first);
+        trap_map.add_edge_2(first);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 4);
@@ -1554,7 +1600,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 1);
 
         // Add the second edge
-        trap_map.add_edge(second);
+        trap_map.add_edge_2(second);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 6);
@@ -1562,7 +1608,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 3);
 
         // Add the third edge
-        trap_map.add_edge(third);
+        trap_map.add_edge_2(third);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 7);
@@ -1577,16 +1623,31 @@ mod tests {
         let points = vec![[0., 0.], [1., 0.], [2., 0.], [3., 1.]];
         let cells = vec![0, 1, 2, 3];
         let mesh = Mesh::with_stride(points, cells, 4)?;
-        let dcel = Dcel::from_mesh(mesh);
-        let first = HedgeId(0);
-        let second = HedgeId(1);
-        let third = dcel.get_hedge(HedgeId(3)).twin;
-        let fourth = HedgeId(2);
+        let first = Edge {
+            p: 0,
+            q: 1,
+            face: 0,
+        };
+        let second = Edge {
+            p: 1,
+            q: 2,
+            face: 0,
+        };
+        let third = Edge {
+            p: 0,
+            q: 3,
+            face: 0,
+        };
+        let fourth = Edge {
+            p: 2,
+            q: 3,
+            face: 0,
+        };
 
-        let mut trap_map = TrapMap::init_with_dcel(dcel);
+        let mut trap_map = TrapMap::init_with_mesh_2(mesh);
 
         // Add the first edge
-        trap_map.add_edge(first);
+        trap_map.add_edge_2(first);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 4);
@@ -1594,7 +1655,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 1);
 
         // Add the second edge
-        trap_map.add_edge(second);
+        trap_map.add_edge_2(second);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 6);
@@ -1602,7 +1663,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 2);
 
         // Add the third edge
-        trap_map.add_edge(third);
+        trap_map.add_edge_2(third);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 8);
@@ -1610,7 +1671,7 @@ mod tests {
         assert_eq!(trap_map.y_node_count(), 5);
 
         // Add the fourth edge
-        trap_map.add_edge(fourth);
+        trap_map.add_edge_2(fourth);
 
         // Check the number of different nodes
         assert_eq!(trap_map.trap_count(), 9);
@@ -1626,38 +1687,7 @@ mod tests {
         let cells = vec![0, 1, 2];
         let mesh = Mesh::with_stride(points, cells, 3)?;
 
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        // Locate a point inside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
-
-        // Edge cases
-        assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(0));
-
-        // Corner cases
-        assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
-
-        // Locate points outside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
-        assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
-        assert_eq!(trap_map.locate_one(&[0.2, 0.8]), None); // above to the left
-        assert_eq!(trap_map.locate_one(&[1.2, 0.8]), None); // to the right
-        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_in_single_triangle_2() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let cells = vec![0, 1, 2];
-        let mesh = Mesh::with_stride(points, cells, 3)?;
-
-        let trap_map = TrapMap::new2(mesh);
+        let trap_map = TrapMap::from_mesh_2(mesh);
 
         // Locate a point inside the triangle
         assert_eq!(trap_map.locate_one_2(&[0.5, 0.1]), Some(0));
@@ -1749,47 +1779,7 @@ mod tests {
         let cells = vec![0, 1, 2, 3];
         let mesh = Mesh::with_stride(points, cells, 4)?;
 
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        // Locate points inside the square
-        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.1, 0.1]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.1, 0.9]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.9, 0.9]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.9, 0.1]), Some(0));
-
-        // Edge cases
-        assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0., 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.5, 1.]), Some(0));
-
-        // Corner cases
-        assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 1.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0., 1.]), Some(0));
-
-        // Locate points outside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // south
-        assert_eq!(trap_map.locate_one(&[1.5, -0.1]), None); // south-east
-        assert_eq!(trap_map.locate_one(&[1.5, 0.8]), None); // east
-        assert_eq!(trap_map.locate_one(&[1.5, 1.8]), None); // north-east
-        assert_eq!(trap_map.locate_one(&[0.5, 1.8]), None); // north
-        assert_eq!(trap_map.locate_one(&[-0.5, 1.8]), None); // north-west
-        assert_eq!(trap_map.locate_one(&[-0.5, 0.8]), None); // west
-        assert_eq!(trap_map.locate_one(&[-0.5, -0.8]), None); // south-west
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_in_single_square_2() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
-        let cells = vec![0, 1, 2, 3];
-        let mesh = Mesh::with_stride(points, cells, 4)?;
-
-        let trap_map = TrapMap::new2(mesh);
+        let trap_map = TrapMap::from_mesh_2(mesh);
 
         // Locate points inside the square
         assert_eq!(trap_map.locate_one_2(&[0.5, 0.5]), Some(0));
@@ -1827,22 +1817,7 @@ mod tests {
     fn locate_points_in_grid() -> Result<()> {
         let mesh = Mesh::grid(0., 1., 0., 1., 2, 2)?;
 
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        // Locate points in different cells
-        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(1));
-        assert_eq!(trap_map.locate_one(&[0.25, 0.75]), Some(2));
-        assert_eq!(trap_map.locate_one(&[0.75, 0.75]), Some(3));
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_in_grid_2() -> Result<()> {
-        let mesh = Mesh::grid(0., 1., 0., 1., 2, 2)?;
-
-        let trap_map = TrapMap::new2(mesh);
+        let trap_map = TrapMap::from_mesh_2(mesh);
 
         // Locate points in different cells
         assert_eq!(trap_map.locate_one_2(&[0.25, 0.25]), Some(0));
