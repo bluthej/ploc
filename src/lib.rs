@@ -209,7 +209,7 @@ impl TrapMap {
                     x2.total_cmp(&x1).then_with(|| y2.total_cmp(&y1)),
                     Ordering::Greater
                 ) {
-                    edges.push(edge);
+                    edges.push(Some(edge));
                     if vertex_faces[p].is_none() {
                         vertex_faces[p] = Some(face);
                     }
@@ -218,19 +218,27 @@ impl TrapMap {
                     // Remember we have visited this righty
                     righties.insert([p, q]);
                 } else if !righties.contains(&[q, p]) {
-                    lefties.insert([p, q], face);
+                    // This is a lefty and we haven't seen its righty twin yet
+                    // We don't know yet if the righty twin exists in the mesh, but in case it
+                    // doesn't we store this edge along with the corresponding face and the current
+                    // index in the list of edges
+                    lefties.insert([p, q], [face, edges.len()]);
+                    edges.push(None);
                 }
             }
         }
         // By the end of the loop we should only have lonely lefties in the hashmap
         // We need to insert their twins in the vec of edges!
-        for ([p, q], face) in lefties {
-            edges.push(Edge { p: q, q: p, face });
+        for ([p, q], [face, idx]) in lefties {
+            edges[idx] = Some(Edge { p: q, q: p, face });
             if vertex_faces[p].is_none() {
                 vertex_faces[p] = Some(face);
             }
         }
         let vertex_faces: Vec<usize> = vertex_faces.iter().map(|f| f.unwrap()).collect();
+        // There are still some `None`s in the list of edges, namely for lefties that do have a
+        // righty twin but who have been seen first
+        let mut edges: Vec<_> = edges.into_iter().flatten().collect();
 
         let mut trap_map = TrapMap::init_with_mesh(mesh);
         trap_map.vertex_faces = vertex_faces;
