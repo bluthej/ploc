@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod dag;
 mod mesh;
 mod winding_number;
@@ -79,16 +77,6 @@ struct Edge {
     face: usize,
 }
 
-impl Edge {
-    fn reverse(&self) -> Self {
-        Self {
-            p: self.q,
-            q: self.p,
-            face: self.face,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct Trapezoid {
     leftp: usize,
@@ -121,19 +109,11 @@ struct BoundingBox {
     xmin: f64,
     xmax: f64,
     ymin: f64,
+    #[allow(unused)]
     ymax: f64,
 }
 
 impl BoundingBox {
-    fn new(xmin: f64, xmax: f64, ymin: f64, ymax: f64) -> Self {
-        Self {
-            xmin: xmin - 0.1,
-            xmax: xmax + 0.1,
-            ymin: ymin - 0.1,
-            ymax: ymax + 0.1,
-        }
-    }
-
     fn from_mesh(mesh: &Mesh) -> Self {
         let mut xmin = f64::MAX;
         let mut xmax = f64::MIN;
@@ -186,6 +166,7 @@ impl TrapMap {
         }
     }
 
+    #[allow(unused)]
     fn empty() -> Self {
         let mut trap_map = Self::new();
         let bbox = BoundingBox::default();
@@ -726,6 +707,7 @@ impl TrapMap {
         &self.dag.get(node_id).unwrap().data
     }
 
+    #[allow(unused)]
     fn check(&self) {
         // Sanity checks
         for node in self.dag.iter() {
@@ -742,6 +724,7 @@ impl TrapMap {
         }
     }
 
+    #[allow(unused)]
     fn x_node_count(&self) -> usize {
         self.dag
             .iter()
@@ -749,6 +732,7 @@ impl TrapMap {
             .count()
     }
 
+    #[allow(unused)]
     fn y_node_count(&self) -> usize {
         self.dag
             .iter()
@@ -756,6 +740,7 @@ impl TrapMap {
             .count()
     }
 
+    #[allow(unused)]
     fn trap_count(&self) -> usize {
         self.dag
             .iter()

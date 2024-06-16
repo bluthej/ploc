@@ -99,6 +99,7 @@ impl Point {
         wn
     }
 
+    #[allow(unused)]
     pub(crate) fn is_inside<I>(&self, poly: I) -> bool
     where
         I: IntoIterator,
