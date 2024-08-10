@@ -32,6 +32,7 @@ pub struct Mesh {
 #[derive(Debug, Clone)]
 enum Offsets {
     Implicit(usize),
+    #[allow(unused)]
     Explicit(Vec<usize>),
 }
 
@@ -66,7 +67,6 @@ impl<'a> Iterator for Cells<'a> {
 pub(crate) struct CellVertices<'a> {
     points: &'a [[f64; 2]],
     cells: &'a [usize],
-    start: usize,
     end: usize,
     idx: usize,
 }
@@ -98,11 +98,8 @@ impl<'a> ExactSizeIterator for CellVertices<'a> {
 
 impl Mesh {
     /// Constructs a new [`Mesh`] from its array representation.
-    pub(crate) fn new(
-        points: Vec<[f64; 2]>,
-        cells: Vec<usize>,
-        offsets: Vec<usize>,
-    ) -> Result<Self> {
+    #[allow(unused)]
+    fn new(points: Vec<[f64; 2]>, cells: Vec<usize>, offsets: Vec<usize>) -> Result<Self> {
         Self::check_ids(points.len(), &cells)?;
 
         if let Some(&last) = offsets.last() {
@@ -195,7 +192,8 @@ impl Mesh {
     }
 
     /// Returns the number of cells in the [`Mesh`].
-    pub(crate) fn cell_count(&self) -> usize {
+    #[allow(unused)]
+    fn cell_count(&self) -> usize {
         match &self.offsets {
             Offsets::Implicit(stride) => self.cells.len() / stride,
             Offsets::Explicit(offsets) => offsets.len() - 1,
@@ -227,6 +225,7 @@ impl Mesh {
     }
 
     /// An iterator over the vertices of a particular cell.
+    #[allow(unused)]
     pub(crate) fn cell_vertices(&self, idx: usize) -> CellVertices {
         let (start, end) = match &self.offsets {
             Offsets::Implicit(stride) if idx * stride < self.cells.len() => {
@@ -240,7 +239,6 @@ impl Mesh {
         CellVertices {
             points: &self.points,
             cells: &self.cells,
-            start,
             end,
             idx: start,
         }
