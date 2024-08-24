@@ -1,4 +1,4 @@
-use numpy::{ndarray::Array, PyArrayDyn, PyReadonlyArray2};
+use numpy::{ndarray::Array, IntoPyArray, PyArrayDyn, PyReadonlyArray2};
 use ploc_rs::PointLocator;
 use pyo3::prelude::*;
 
@@ -43,9 +43,9 @@ impl TrapMap {
             Method::Auto => todo!("This should determine heuristically whether to use the sequential or parallel version based on the size of the query"),
         };
 
-        let res =
-            Array::from_iter(res.iter().map(|r| r.map(|i| i as isize).unwrap_or(-1))).into_dyn();
-        PyArrayDyn::from_owned_array_bound(py, res)
+        Array::from_iter(res.iter().map(|r| r.map_or(-1, |i| i as isize)))
+            .into_dyn()
+            .into_pyarray_bound(py)
     }
 }
 
