@@ -3,7 +3,7 @@ use ploc_rs::PointLocator;
 use pyo3::prelude::*;
 
 #[pyclass]
-struct TrapMap(ploc_rs::TrapMap);
+struct PyTrapMap(ploc_rs::TrapMap);
 
 #[pyclass(rename_all = "UPPERCASE")]
 #[derive(Clone)]
@@ -14,7 +14,7 @@ enum Method {
 }
 
 #[pymethods]
-impl TrapMap {
+impl PyTrapMap {
     #[new]
     fn new(points: PyReadonlyArray2<'_, f64>, cells: PyReadonlyArray2<'_, isize>) -> Self {
         let points = points.as_array();
@@ -52,7 +52,7 @@ impl TrapMap {
 /// A Python module implemented in Rust.
 #[pymodule]
 fn ploc(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<TrapMap>()?;
+    m.add_class::<PyTrapMap>()?;
     m.add_class::<Method>()?;
     Ok(())
 }
