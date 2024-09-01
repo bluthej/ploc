@@ -1,4 +1,4 @@
-use ploc::{Mesh, PointLocator, TrapMap};
+use ploc::{Mesh, NewTrapMap, PointLocator};
 use rand::prelude::*;
 
 fn main() {
@@ -8,7 +8,7 @@ fn main() {
 
     // Create trapezoidal maps
     let mesh = Mesh::grid(xmin, xmax, ymin, ymax, n, n).unwrap();
-    let trap_map = TrapMap::from_mesh(mesh);
+    let trap_map = NewTrapMap::from_mesh(mesh);
 
     let mut rng = rand::thread_rng();
     let query: Vec<_> = (0..420_000)
