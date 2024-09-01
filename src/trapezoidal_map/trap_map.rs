@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use nonmax::NonMaxUsize;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::{
@@ -54,10 +55,10 @@ pub(crate) struct Trapezoid {
     pub(crate) rightp: usize,
     pub(crate) bottom: Edge,
     pub(crate) top: Edge,
-    pub(crate) lower_left: Option<usize>,
-    pub(crate) upper_left: Option<usize>,
-    pub(crate) lower_right: Option<usize>,
-    pub(crate) upper_right: Option<usize>,
+    pub(crate) lower_left: Option<NonMaxUsize>,
+    pub(crate) upper_left: Option<NonMaxUsize>,
+    pub(crate) lower_right: Option<NonMaxUsize>,
+    pub(crate) upper_right: Option<NonMaxUsize>,
 }
 
 impl Trapezoid {
@@ -155,7 +156,7 @@ impl TrapMap {
         for (face, cell) in mesh.cells().enumerate() {
             for (&p, &q) in cell.iter().circular_tuple_windows() {
                 if vertex_faces[p].is_none() {
-                    vertex_faces[p] = Some(face);
+                    vertex_faces[p] = NonMaxUsize::new(face);
                 }
                 let edge = Edge { p, q, face };
                 let [x1, y1] = mesh.coords(p);
@@ -184,10 +185,10 @@ impl TrapMap {
         for ([p, q], [face, idx]) in lefties {
             edges[idx] = Some(Edge { p: q, q: p, face });
             if vertex_faces[p].is_none() {
-                vertex_faces[p] = Some(face);
+                vertex_faces[p] = NonMaxUsize::new(face);
             }
         }
-        let vertex_faces: Vec<usize> = vertex_faces.iter().map(|f| f.unwrap()).collect();
+        let vertex_faces: Vec<usize> = vertex_faces.into_iter().map(|f| f.unwrap().get()).collect();
         // There are still some `None`s in the list of edges, namely for lefties that do have a
         // righty twin but who have been seen first
         let mut edges: Vec<_> = edges.into_iter().flatten().collect();
@@ -255,6 +256,12 @@ impl TrapMap {
         for (i, &old_trap_idx) in trap_ids.iter().enumerate() {
             let old = &self.dag.get(old_trap_idx).unwrap().data.get_trap().clone();
 
+            // Get the old neighbors
+            let old_lower_left = old.lower_left.map(|idx| idx.get());
+            let old_upper_left = old.upper_left.map(|idx| idx.get());
+            let old_lower_right = old.lower_right.map(|idx| idx.get());
+            let old_upper_right = old.upper_right.map(|idx| idx.get());
+
             let start_trap = i == 0;
             let end_trap = i == trap_count - 1;
             let have_left = start_trap && p != old.leftp;
@@ -281,28 +288,28 @@ impl TrapMap {
                 let left_idx = if have_left {
                     let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
                     let left_idx = self.dag.add(Node::Trap(left));
-                    self.connect_lower_neighbors(old.lower_left, Some(left_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(left_idx));
+                    self.connect_lower_neighbors(old_lower_left, Some(left_idx));
+                    self.connect_upper_neighbors(old_upper_left, Some(left_idx));
                     self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
                     self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
                     Some(left_idx)
                 } else {
-                    self.connect_lower_neighbors(old.lower_left, Some(below_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(above_idx));
+                    self.connect_lower_neighbors(old_lower_left, Some(below_idx));
+                    self.connect_upper_neighbors(old_upper_left, Some(above_idx));
                     None
                 };
 
                 let right_idx = if have_right {
                     let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
                     let right_idx = self.dag.add(Node::Trap(right));
-                    self.connect_lower_neighbors(Some(right_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(right_idx), old.upper_right);
+                    self.connect_lower_neighbors(Some(right_idx), old_lower_right);
+                    self.connect_upper_neighbors(Some(right_idx), old_upper_right);
                     self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
                     self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
                     Some(right_idx)
                 } else {
-                    self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+                    self.connect_lower_neighbors(Some(below_idx), old_lower_right);
+                    self.connect_upper_neighbors(Some(above_idx), old_upper_right);
                     None
                 };
 
@@ -317,20 +324,20 @@ impl TrapMap {
                 let above_idx = self.dag.add(Node::Trap(above));
 
                 // Connect neighbors
-                self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+                self.connect_lower_neighbors(Some(below_idx), old_lower_right);
+                self.connect_upper_neighbors(Some(above_idx), old_upper_right);
 
                 let left_idx = if have_left {
                     let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
                     let left_idx = self.dag.add(Node::Trap(left));
-                    self.connect_lower_neighbors(old.lower_left, Some(left_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(left_idx));
+                    self.connect_lower_neighbors(old_lower_left, Some(left_idx));
+                    self.connect_upper_neighbors(old_upper_left, Some(left_idx));
                     self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
                     self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
                     Some(left_idx)
                 } else {
-                    self.connect_lower_neighbors(old.lower_left, Some(below_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(above_idx));
+                    self.connect_lower_neighbors(old_lower_left, Some(below_idx));
+                    self.connect_upper_neighbors(old_upper_left, Some(above_idx));
                     None
                 };
 
@@ -377,24 +384,24 @@ impl TrapMap {
                 let right_idx = if have_right {
                     let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
                     let right_idx = self.dag.add(Node::Trap(right));
-                    self.connect_lower_neighbors(Some(right_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(right_idx), old.upper_right);
+                    self.connect_lower_neighbors(Some(right_idx), old_lower_right);
+                    self.connect_upper_neighbors(Some(right_idx), old_upper_right);
                     self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
                     self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
                     Some(right_idx)
                 } else {
-                    self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+                    self.connect_lower_neighbors(Some(below_idx), old_lower_right);
+                    self.connect_upper_neighbors(Some(above_idx), old_upper_right);
                     None
                 };
 
                 if below_idx != left_below.unwrap() {
                     self.connect_upper_neighbors(left_below, Some(below_idx));
                     self.connect_lower_neighbors(
-                        if old.lower_left == left_old {
+                        if old_lower_left == left_old {
                             left_below
                         } else {
-                            old.lower_left
+                            old_lower_left
                         },
                         Some(below_idx),
                     );
@@ -403,10 +410,10 @@ impl TrapMap {
                 if above_idx != left_above.unwrap() {
                     self.connect_lower_neighbors(left_above, Some(above_idx));
                     self.connect_upper_neighbors(
-                        if old.upper_left == left_old {
+                        if old_upper_left == left_old {
                             left_above
                         } else {
-                            old.upper_left
+                            old_upper_left
                         },
                         Some(above_idx),
                     );
@@ -459,10 +466,10 @@ impl TrapMap {
                 if below_idx != left_below.unwrap() {
                     self.connect_upper_neighbors(left_below, Some(below_idx));
                     self.connect_lower_neighbors(
-                        if old.lower_left == left_old {
+                        if old_lower_left == left_old {
                             left_below
                         } else {
-                            old.lower_left
+                            old_lower_left
                         },
                         Some(below_idx),
                     );
@@ -471,17 +478,17 @@ impl TrapMap {
                 if above_idx != left_above.unwrap() {
                     self.connect_lower_neighbors(left_above, Some(above_idx));
                     self.connect_upper_neighbors(
-                        if old.upper_left == left_old {
+                        if old_upper_left == left_old {
                             left_above
                         } else {
-                            old.upper_left
+                            old_upper_left
                         },
                         Some(above_idx),
                     );
                 }
 
-                self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+                self.connect_lower_neighbors(Some(below_idx), old_lower_right);
+                self.connect_upper_neighbors(Some(above_idx), old_upper_right);
 
                 let left_idx = None;
                 let right_idx = None;
@@ -542,11 +549,13 @@ impl TrapMap {
 
     pub(crate) fn connect_lower_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
         if let Some(idx) = right {
+            let left = left.map(|idx| NonMaxUsize::new(idx).unwrap());
             self.dag
                 .entry(idx)
                 .and_modify(|node| node.get_trap_mut().lower_left = left);
         }
         if let Some(idx) = left {
+            let right = right.map(|idx| NonMaxUsize::new(idx).unwrap());
             self.dag
                 .entry(idx)
                 .and_modify(|node| node.get_trap_mut().lower_right = right);
@@ -555,11 +564,13 @@ impl TrapMap {
 
     pub(crate) fn connect_upper_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
         if let Some(idx) = right {
+            let left = left.map(|idx| NonMaxUsize::new(idx).unwrap());
             self.dag
                 .entry(idx)
                 .and_modify(|node| node.get_trap_mut().upper_left = left);
         }
         if let Some(idx) = left {
+            let right = right.map(|idx| NonMaxUsize::new(idx).unwrap());
             self.dag
                 .entry(idx)
                 .and_modify(|node| node.get_trap_mut().upper_right = right);
@@ -583,11 +594,13 @@ impl TrapMap {
             if rightp_above_s {
                 dj = trap
                     .lower_right
-                    .expect("There should be a lower right trap");
+                    .expect("There should be a lower right trap")
+                    .get();
             } else {
                 dj = trap
                     .upper_right
-                    .expect("There should be an upper right trap");
+                    .expect("There should be an upper right trap")
+                    .get();
             }
             trap = self.dag.get(dj).unwrap().data.get_trap();
             rightp = self.vertices[trap.rightp];
