@@ -17,7 +17,7 @@ use std::slice::Iter;
 /// Note: This implementation is influenced by:
 /// - [This blog post](https://dev.to/deciduously/no-more-tears-no-more-knots-arena-allocated-trees-in-rust-44k6)
 /// - [indextree](https://crates.io/crates/indextree) (I was using it before I realized I needed a
-/// graph instead of a tree)
+///   graph instead of a tree)
 #[derive(Debug, Default)]
 pub(crate) struct Dag<T> {
     arena: Vec<Node<T>>,

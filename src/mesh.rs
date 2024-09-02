@@ -20,6 +20,7 @@ use anyhow::{anyhow, Result};
 /// This representation of a mesh is found in several places, two of which are:
 /// - [axom](https://axom.readthedocs.io/en/develop/axom/mint/docs/sphinx/sections/mesh_types.html#mixedcelltopology)
 /// - [geogram](https://github.com/BrunoLevy/geogram/wiki/Mesh#triangulated-and-polygonal-meshes)
+///
 /// It does have the advantage of allowing both single cell and mixed cell type topologies
 /// (see the above link to the axom documentation).
 #[derive(Debug, Clone)]
