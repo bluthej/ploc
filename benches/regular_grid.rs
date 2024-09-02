@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use ploc::{Mesh, NewTrapMap, PointLocator};
+use ploc::{Mesh, PointLocator, TrapMap};
 use rand::prelude::*;
 
 pub fn create_trap_map(c: &mut Criterion) {
@@ -14,7 +14,7 @@ pub fn create_trap_map(c: &mut Criterion) {
             BenchmarkId::new("Create trapezoidal maps", n),
             &mesh,
             |b, m| {
-                b.iter(|| NewTrapMap::from_mesh(m.clone()));
+                b.iter(|| TrapMap::from_mesh(m.clone()));
             },
         );
     }
@@ -27,7 +27,7 @@ pub fn locate_points(c: &mut Criterion) {
     for n in [5, 50, 200] {
         // Create trapezoidal maps
         let mesh = Mesh::grid(xmin, xmax, ymin, ymax, n, n).unwrap();
-        let trap_map = NewTrapMap::from_mesh(mesh);
+        let trap_map = TrapMap::from_mesh(mesh);
 
         let mut rng = rand::thread_rng();
         let query: Vec<_> = (0..42_000)
