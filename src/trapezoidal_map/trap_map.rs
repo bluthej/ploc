@@ -180,6 +180,7 @@ impl TrapMap {
                 }
             }
         }
+        drop(righties);
         // By the end of the loop we should only have lonely lefties in the hashmap
         // We need to insert their twins in the vec of edges!
         for ([p, q], [face, idx]) in lefties {
