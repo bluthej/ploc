@@ -154,6 +154,9 @@ impl TrapMap {
         let mut vertex_faces = vec![None; n_vertices];
         for (face, cell) in mesh.cells().enumerate() {
             for (&p, &q) in cell.iter().circular_tuple_windows() {
+                if vertex_faces[p].is_none() {
+                    vertex_faces[p] = Some(face);
+                }
                 let edge = Edge { p, q, face };
                 let [x1, y1] = mesh.coords(p);
                 let [x2, y2] = mesh.coords(q);
@@ -162,9 +165,6 @@ impl TrapMap {
                     Ordering::Greater
                 ) {
                     edges.push(Some(edge));
-                    if vertex_faces[p].is_none() {
-                        vertex_faces[p] = Some(face);
-                    }
                     // Remove twin if encountered before
                     lefties.remove(&[q, p]);
                     // Remember we have visited this righty
@@ -1169,6 +1169,24 @@ pub(crate) mod tests {
         assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(1));
         assert_eq!(trap_map.locate_one(&[0.25, 0.75]), Some(2));
         assert_eq!(trap_map.locate_one(&[0.75, 0.75]), Some(3));
+
+        Ok(())
+    }
+
+    #[test]
+    fn locate_vertex() -> Result<()> {
+        let mesh = Mesh::with_stride(
+            vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
+            vec![0, 1, 3, 1, 2, 3],
+            3,
+        )?;
+
+        let trap_map = TrapMap::from_mesh(mesh);
+
+        // For consistency with matplotlib, points located on vertices should yield the first polygon
+        // in which they appear.
+        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[0., 1.]), Some(0));
 
         Ok(())
     }
