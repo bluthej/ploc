@@ -194,7 +194,7 @@ impl Mesh {
 
     /// Returns the number of cells in the [`Mesh`].
     #[allow(unused)]
-    fn cell_count(&self) -> usize {
+    pub(crate) fn cell_count(&self) -> usize {
         match &self.offsets {
             Offsets::Implicit(stride) => self.cells.len() / stride,
             Offsets::Explicit(offsets) => offsets.len() - 1,

@@ -24,3 +24,7 @@ harness = false
 [[bench]]
 name = "regular_grid"
 harness = false
+
+[[bench]]
+name = "trap_map_VS_quadtree"
+harness = false
