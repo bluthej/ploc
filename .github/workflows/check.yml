@@ -60,6 +60,8 @@ jobs:
           reporter: 'github-pr-check'
           github_token: ${{ secrets.GITHUB_TOKEN }}
   semver:
+    # TODO: Enable cargo-semver-checks once the crate has been released on crates.io
+    if: false
     runs-on: ubuntu-latest
     name: semver
     steps:
