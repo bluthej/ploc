@@ -114,7 +114,7 @@ jobs:
     # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
     strategy:
       matrix:
-        msrv: ["1.60.0"] # criterion 0.5.0 requires clap ^4 which requires rust 1.60
+        msrv: ["1.65.0"] # let else has been stabilized in 1.65
     name: ubuntu / ${{ matrix.msrv }}
     steps:
       - uses: actions/checkout@v4
