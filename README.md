@@ -5,6 +5,11 @@
     alt="ploc logo">
   <br>ploc
 </p>
+</h1>
+
+[![tests](https://github.com/bluthej/ploc/workflows/test/badge.svg)](https://github.com/bluthej/ploc/actions)
+[![Codecov](https://codecov.io/github/bluthej/ploc/coverage.svg?branch=main)](https://codecov.io/gh/bluthej/ploc)
+![minimum rustc 1.65](https://img.shields.io/badge/rustc-1.65+-red.svg)
 
 ## About
 
