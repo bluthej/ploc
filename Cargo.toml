@@ -16,6 +16,7 @@ smallvec = "1.13.2"
 [dev-dependencies]
 criterion = "0.5.1"
 proptest = "1.2.0"
+serde = "1.0.131" # for -Zminimal-versions, via criterion
 
 [[bench]]
 name = "comparison_with_rectilinear_locator"
