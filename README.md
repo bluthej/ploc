@@ -1,7 +1,7 @@
 <h1>
 <p align="center">
   <img
-    src="https://raw.githubusercontent.com/bluthej/ploc/docs/improve-readme/assets/logo.svg"
+    src="https://raw.githubusercontent.com/bluthej/ploc/main/assets/logo.svg"
     alt="ploc logo">
   <br>ploc
 </p>
