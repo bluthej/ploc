@@ -91,7 +91,7 @@ impl<'a> Iterator for CellVertices<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for CellVertices<'a> {
+impl ExactSizeIterator for CellVertices<'_> {
     fn len(&self) -> usize {
         self.size_hint().0
     }
