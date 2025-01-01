@@ -36,6 +36,12 @@ However, we already go a little further in a few respects and there are other th
 - [ ] Make it work `f32` in addition to `f64` for the point coordinates
 - [ ] Add a quadtree implementation (initial tests show that it is much simpler to implement and it performs really well for large meshes, but not so much for small ones)
 
+## Contributing
+
+Contributions are welcome!
+
+Feel free to open an [issue](https://github.com/bluthej/ploc/issues/new) or a [PR](https://github.com/bluthej/ploc/compare) if you find a bug or want something to be improved.
+
 ## Influences
 
 This work has been greatly influenced by the following:
