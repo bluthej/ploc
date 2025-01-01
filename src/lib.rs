@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 mod mesh;
 mod point_locator;
 mod rectilinear_locator;
