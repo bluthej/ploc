@@ -43,7 +43,7 @@ pub(crate) enum Positioning {
 }
 
 impl Point {
-    /// Test if a point is Left|On|Right of an infinite 2D line defined by two points.
+    /// Tests if a point is Left|On|Right of an infinite 2D line defined by two points.
     pub(crate) fn position<T>(&self, p1: T, p2: T) -> Positioning
     where
         T: Into<[f64; 2]>,
@@ -58,7 +58,7 @@ impl Point {
         }
     }
 
-    /// Compute the winding number for a [`Point`] in a polygon (defined by a slice of [`Point`]s).
+    /// Computes the winding number for a [`Point`] in a polygon (defined by a slice of [`Point`]s).
     ///
     /// This number can be:
     /// - `0` if the [`Point`] is not inside the polygon

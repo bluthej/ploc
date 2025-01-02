@@ -166,7 +166,7 @@ impl TrapMap {
         }
     }
 
-    /// Create an empty trapezoidal map.
+    /// Creates an empty trapezoidal map.
     pub fn empty() -> Self {
         let mut trap_map = Self::new();
         let bbox = BoundingBox::default();
@@ -174,7 +174,7 @@ impl TrapMap {
         trap_map
     }
 
-    /// Create a trapezoidal map from a [`Mesh`].
+    /// Creates a trapezoidal map from a [`Mesh`].
     pub fn from_mesh(mesh: Mesh) -> Self {
         let n_edges = mesh.facet_count();
         let n_vertices = mesh.vertex_count();
@@ -708,7 +708,7 @@ impl TrapMap {
         &self.dag.get(node_id).unwrap().data
     }
 
-    /// Check some invariants of the DAG.
+    /// Checks some invariants of the DAG.
     ///
     /// This is meant for debugging purposes.
     ///
