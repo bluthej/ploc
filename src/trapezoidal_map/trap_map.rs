@@ -110,7 +110,6 @@ pub(crate) struct BoundingBox {
     pub(crate) xmin: f64,
     pub(crate) xmax: f64,
     pub(crate) ymin: f64,
-    #[allow(unused)]
     pub(crate) ymax: f64,
 }
 
@@ -240,7 +239,7 @@ impl TrapMap {
     pub(crate) fn add_bounding_box(&mut self, bbox: BoundingBox) {
         let nv = self.vertices.len();
         self.vertices.push([bbox.xmin, bbox.ymin]);
-        self.vertices.push([bbox.xmax, bbox.ymin]);
+        self.vertices.push([bbox.xmax, bbox.ymax]);
 
         self.bbox = bbox;
 
