@@ -44,3 +44,4 @@ pub use mesh::{CellVertices, Mesh};
 pub use point_locator::PointLocator;
 pub use rectilinear_locator::RectilinearLocator;
 pub use trapezoidal_map::trap_map::TrapMap;
+pub use winding_number::Point;
