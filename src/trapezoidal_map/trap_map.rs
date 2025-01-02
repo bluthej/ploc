@@ -166,8 +166,8 @@ impl TrapMap {
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn empty() -> Self {
+    /// Create an empty trapezoidal map.
+    pub fn empty() -> Self {
         let mut trap_map = Self::new();
         let bbox = BoundingBox::default();
         trap_map.add_bounding_box(bbox);
@@ -708,8 +708,15 @@ impl TrapMap {
         &self.dag.get(node_id).unwrap().data
     }
 
-    #[allow(unused)]
-    pub(crate) fn check(&self) {
+    /// Check some invariants of the DAG.
+    ///
+    /// This is meant for debugging purposes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are isolated nodes in the DAG, or
+    /// if there are leaf nodes that are x- or y-nodes.
+    pub fn check(&self) {
         // Sanity checks
         for node in self.dag.iter() {
             assert!(
@@ -725,32 +732,50 @@ impl TrapMap {
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn x_node_count(&self) -> usize {
+    /// Returns the number of x-nodes in the DAG.
+    pub fn x_node_count(&self) -> usize {
         self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::X(..)))
             .count()
     }
 
-    #[allow(unused)]
-    pub(crate) fn y_node_count(&self) -> usize {
+    /// Returns the number of y-nodes in the DAG.
+    pub fn y_node_count(&self) -> usize {
         self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::Y { .. }))
             .count()
     }
 
-    #[allow(unused)]
-    pub(crate) fn trap_count(&self) -> usize {
+    /// Returns the number of trapezoid-nodes in the DAG.
+    pub fn trap_count(&self) -> usize {
         self.dag
             .iter()
             .filter(|&node| matches!(node.data, Node::Trap(..)))
             .count()
     }
 
-    #[allow(unused)]
-    pub(crate) fn node_count(&self) -> (usize, usize, usize) {
+    /// Prints some statistics of the DAG.
+    ///
+    /// Useful for debugging purposes.
+    ///
+    /// These statistics are:
+    /// - Number of x-, y- and trapezoid-nodes
+    /// - Average and max depth
+    pub fn print_stats(&self) {
+        let (x_node_count, y_node_count, trap_count) = self.node_count();
+        println!(
+            "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
+            x_node_count, y_node_count, trap_count,
+        );
+        println!();
+        let (avg, max) = self.depth_stats();
+        println!("Depth:\n\tmax {}\n\taverage {}", max, avg);
+    }
+
+    /// Returns the number of nodes in the DAG.
+    pub fn node_count(&self) -> (usize, usize, usize) {
         self.dag.iter().fold(
             (0, 0, 0),
             |(mut x_count, mut y_count, mut trap_count), node| {
@@ -764,19 +789,6 @@ impl TrapMap {
         )
     }
 
-    #[allow(unused)]
-    fn print_stats(&self) {
-        let (x_node_count, y_node_count, trap_count) = self.node_count();
-        println!(
-            "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
-            x_node_count, y_node_count, trap_count,
-        );
-        println!();
-        let (avg, max) = self.depth_stats();
-        println!("Depth:\n\tmax {}\n\taverage {}", max, avg);
-    }
-
-    #[allow(unused)]
     fn depth_stats(&self) -> (f64, usize) {
         let mut trap_count = 0;
         let mut avg = 0;
