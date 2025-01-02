@@ -11,6 +11,36 @@ use crate::point_locator::PointLocator;
 use crate::trapezoidal_map::dag::Dag;
 use crate::winding_number::{Point, Positioning};
 
+/// Trapezoidal map data structure.
+///
+/// This is essentially a directed acyclic graph (a.k.a. a DAG)
+/// where the nodes can be one of three kinds:
+/// - an x-node (associated with a vertex of the mesh)
+/// - a y-node (associated with an edge of the mesh)
+/// - a trapezoid-node (associated with... a trapezoid!)
+///
+/// The inner nodes of the DAG can only be x- and y-nodes, while
+/// the leaf nodes can only be trapezoid-nodes.
+///
+/// This data structure is one of four known ones that have
+/// the optimal *O*(log(*n*)) search time with *O*(*n*) storage,
+/// although in the case of the trapezoidal map those are
+/// *expected* results. Note that it can be proven that the
+/// probability of a bad maximum query time is very small
+/// (see [De Berg et al.]).
+///
+/// The construction of the trapezoidal map is also very interesting,
+/// because it is a *randomized incremental* argorithm. What this
+/// means is that the edges of the mesh are added one at a time in
+/// random order, and at each step of the process we have a search
+/// structure that can perform point location queries. When an edge
+/// is added, the intersected trapezoids are found using said search
+/// structure, and these trapezoids are divided into sub-trapezoids.
+/// This process is expected to take *O*(*n* \* log(*n*)) time.
+/// Shuffling the edges is really important for the performance
+/// of the resulting data structure!
+///
+/// [De Berg et al.]: https://doi.org/10.1007/978-3-540-77974-2
 pub struct TrapMap {
     pub(crate) dag: Dag<Node>,
     pub(crate) vertices: Vec<[f64; 2]>,
@@ -145,6 +175,7 @@ impl TrapMap {
         trap_map
     }
 
+    /// Create a trapezoidal map from a [`Mesh`].
     pub fn from_mesh(mesh: Mesh) -> Self {
         let n_edges = mesh.facet_count();
         let n_vertices = mesh.vertex_count();
@@ -719,6 +750,7 @@ impl TrapMap {
             .count()
     }
 
+    #[allow(unused)]
     pub(crate) fn node_count(&self) -> (usize, usize, usize) {
         self.dag.iter().fold(
             (0, 0, 0),
@@ -733,7 +765,8 @@ impl TrapMap {
         )
     }
 
-    pub fn print_stats(&self) {
+    #[allow(unused)]
+    fn print_stats(&self) {
         let (x_node_count, y_node_count, trap_count) = self.node_count();
         println!(
             "Trapezoidal map counts:\n\t{} X node(s)\n\t{} Y node(s)\n\t{} trapezoid(s)",
@@ -744,7 +777,8 @@ impl TrapMap {
         println!("Depth:\n\tmax {}\n\taverage {}", max, avg);
     }
 
-    pub fn depth_stats(&self) -> (f64, usize) {
+    #[allow(unused)]
+    fn depth_stats(&self) -> (f64, usize) {
         let mut trap_count = 0;
         let mut avg = 0;
         let mut max = 0;
