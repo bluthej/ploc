@@ -273,277 +273,287 @@ impl TrapMap {
         trap_map
     }
 
-    pub(crate) fn add_edge(&mut self, edge: Edge) {
-        let Edge { p, q, .. } = edge;
-
-        let mut left_old = None;
-        let mut left_below = None;
-        let mut left_above = None;
+    fn add_edge(&mut self, edge: Edge) {
+        // Old trapezoids are replaced by up to 4 new trapezoids:
+        // - `left` is the new trapezoid to the left of p, if it exists
+        // - `right` is the new trapezoid to the right of q, if it exists
+        // - `above` is the new trapezoid above the insterted edge
+        // - `below` is the new trapezoid below the insterted edge
 
         let trap_ids = self.follow_segment(edge);
         let trap_count = trap_ids.len();
-        for (i, &old_trap_idx) in trap_ids.iter().enumerate() {
+        assert!(
+            trap_count > 0,
+            "Edges should always intersect at least one trapezoid."
+        );
+
+        if trap_count == 1 {
+            self.add_edge_crossing_one_trapezoid(edge, trap_ids[0]);
+        } else {
+            self.add_edge_crossing_multiple_trapezoids(edge, trap_ids);
+        }
+    }
+
+    fn add_edge_crossing_one_trapezoid(&mut self, edge: Edge, old_trap_idx: usize) {
+        // The old trapezoid is replaced by either 2, 3 or 4 new trapezoids, depending on whether
+        // p and q are different from the the old trapezoid's leftp and rightp respectively or
+        // not.
+
+        let Edge { p, q, .. } = edge;
+        let old = &self.dag.get(old_trap_idx).unwrap().data.get_trap().clone();
+
+        let p_is_new = p != old.leftp;
+        let q_is_new = q != old.rightp;
+
+        // Edge intersects a single trapezoid.
+        let below = Trapezoid::new(p, q, old.bottom, edge);
+        let above = Trapezoid::new(p, q, edge, old.top);
+
+        // Add new trapezoids to DAG
+        let below_idx = self.dag.add(Node::Trap(below));
+        let above_idx = self.dag.add(Node::Trap(above));
+
+        // Connect neighbors
+        let left_idx = if p_is_new {
+            let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
+            let left_idx = self.dag.add(Node::Trap(left));
+            self.connect_lower_neighbors(old.lower_left, Some(left_idx));
+            self.connect_upper_neighbors(old.upper_left, Some(left_idx));
+            self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
+            self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
+            Some(left_idx)
+        } else {
+            self.connect_lower_neighbors(old.lower_left, Some(below_idx));
+            self.connect_upper_neighbors(old.upper_left, Some(above_idx));
+            None
+        };
+        let right_idx = if q_is_new {
+            let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
+            let right_idx = self.dag.add(Node::Trap(right));
+            self.connect_lower_neighbors(Some(right_idx), old.lower_right);
+            self.connect_upper_neighbors(Some(right_idx), old.upper_right);
+            self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
+            self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
+            Some(right_idx)
+        } else {
+            self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+            self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+            None
+        };
+
+        self.replace_old_trap_node(
+            old_trap_idx,
+            left_idx,
+            right_idx,
+            above_idx,
+            below_idx,
+            edge,
+        );
+    }
+
+    fn add_edge_crossing_multiple_trapezoids(&mut self, edge: Edge, trap_ids: Vec<usize>) {
+        let Edge { p, q, .. } = edge;
+
+        // First trapezoid.
+        //
+        // The old trapezoid is replaced by either 2 or 3 new trapezoids, depending on whether
+        // p is different from the the old trapezoid's leftp or not.
+
+        let old_trap_idx = trap_ids[0];
+        let old = &self.dag.get(old_trap_idx).unwrap().data.get_trap().clone();
+        let p_is_new = p != old.leftp;
+
+        let below = Trapezoid::new(p, old.rightp, old.bottom, edge);
+        let above = Trapezoid::new(p, old.rightp, edge, old.top);
+
+        // Add new trapezoids to DAG
+        let below_idx = self.dag.add(Node::Trap(below));
+        let above_idx = self.dag.add(Node::Trap(above));
+
+        // Connect neighbors
+        self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+        self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+        let left_idx = if p_is_new {
+            let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
+            let left_idx = self.dag.add(Node::Trap(left));
+            self.connect_lower_neighbors(old.lower_left, Some(left_idx));
+            self.connect_upper_neighbors(old.upper_left, Some(left_idx));
+            self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
+            self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
+            Some(left_idx)
+        } else {
+            self.connect_lower_neighbors(old.lower_left, Some(below_idx));
+            self.connect_upper_neighbors(old.upper_left, Some(above_idx));
+            None
+        };
+
+        self.replace_old_trap_node(old_trap_idx, left_idx, None, above_idx, below_idx, edge);
+
+        // Keep track of old, above and below to make connections with the following trapezoids
+        let mut left_old = old_trap_idx;
+        let mut left_above = above_idx;
+        let mut left_below = below_idx;
+
+        for &old_trap_idx in trap_ids[1..trap_ids.len() - 1].iter() {
+            // Middle trapezoids.
+            // Old trapezoid is neither the first nor last of the 3+ trapezoids that the edge
+            // intersects.
+            //
+            // The old trapezoid is always replaced by exactly 2 new trapezoids.
+
             let old = &self.dag.get(old_trap_idx).unwrap().data.get_trap().clone();
 
-            let start_trap = i == 0;
-            let end_trap = i == trap_count - 1;
-            let have_left = start_trap && p != old.leftp;
-            let have_right = end_trap && q != old.rightp;
-
-            // Old trapezoid is replaced by up to 4 new trapezoids: left is to the left of the start
-            // point p, below/above are below/above the inserted edge, and right is to the right of
-            // the end point q.
-            //
-            // There are 4 different cases here depending on whether the old trapezoid in question
-            // is the start and/or end trapezoid of those that intersect the edge inserted.
-            // There is some code duplication here but it is much easier to understand this way
-            // rather than interleave the 4 different cases with many more if-statements.
-            let (left_idx, right_idx, below_idx, above_idx) = if start_trap && end_trap {
-                // Edge intersects a single trapezoid.
-                let below = Trapezoid::new(p, q, old.bottom, edge);
-                let above = Trapezoid::new(p, q, edge, old.top);
-
-                // Add new trapezoids to DAG
-                let below_idx = self.dag.add(Node::Trap(below));
-                let above_idx = self.dag.add(Node::Trap(above));
-
-                // Connect neighbors
-                let left_idx = if have_left {
-                    let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
-                    let left_idx = self.dag.add(Node::Trap(left));
-                    self.connect_lower_neighbors(old.lower_left, Some(left_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(left_idx));
-                    self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
-                    self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
-                    Some(left_idx)
-                } else {
-                    self.connect_lower_neighbors(old.lower_left, Some(below_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(above_idx));
-                    None
-                };
-
-                let right_idx = if have_right {
-                    let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
-                    let right_idx = self.dag.add(Node::Trap(right));
-                    self.connect_lower_neighbors(Some(right_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(right_idx), old.upper_right);
-                    self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
-                    self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
-                    Some(right_idx)
-                } else {
-                    self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(above_idx), old.upper_right);
-                    None
-                };
-
-                (left_idx, right_idx, below_idx, above_idx)
-            } else if start_trap {
-                // Old trapezoid is the first of 2+ trapezoids that the edge intersects.
-                let below = Trapezoid::new(p, old.rightp, old.bottom, edge);
-                let above = Trapezoid::new(p, old.rightp, edge, old.top);
-
-                // Add new trapezoids to DAG
-                let below_idx = self.dag.add(Node::Trap(below));
-                let above_idx = self.dag.add(Node::Trap(above));
-
-                // Connect neighbors
-                self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                self.connect_upper_neighbors(Some(above_idx), old.upper_right);
-
-                let left_idx = if have_left {
-                    let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
-                    let left_idx = self.dag.add(Node::Trap(left));
-                    self.connect_lower_neighbors(old.lower_left, Some(left_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(left_idx));
-                    self.connect_lower_neighbors(Some(left_idx), Some(below_idx));
-                    self.connect_upper_neighbors(Some(left_idx), Some(above_idx));
-                    Some(left_idx)
-                } else {
-                    self.connect_lower_neighbors(old.lower_left, Some(below_idx));
-                    self.connect_upper_neighbors(old.upper_left, Some(above_idx));
-                    None
-                };
-
-                let right_idx = None;
-
-                (left_idx, right_idx, below_idx, above_idx)
-            } else if end_trap {
-                // Old trapezoid is the last of 2+ trapezoids that the edge intersects.
-                let left_below_bottom = self
-                    .dag
-                    .get(left_below.unwrap())
-                    .unwrap()
-                    .data
-                    .get_trap()
-                    .bottom;
-                let below_idx = if left_below_bottom == old.bottom {
-                    self.dag
-                        .entry(left_below.unwrap())
-                        .and_modify(|node| node.get_trap_mut().rightp = q);
-                    left_below.unwrap()
-                } else {
-                    self.dag
-                        .add(Node::Trap(Trapezoid::new(old.leftp, q, old.bottom, edge)))
-                };
-
-                let left_above_top = self
-                    .dag
-                    .get(left_above.unwrap())
-                    .unwrap()
-                    .data
-                    .get_trap()
-                    .top;
-                let above_idx = if left_above_top == old.top {
-                    self.dag
-                        .entry(left_above.unwrap())
-                        .and_modify(|node| node.get_trap_mut().rightp = q);
-                    left_above.unwrap()
-                } else {
-                    self.dag
-                        .add(Node::Trap(Trapezoid::new(old.leftp, q, edge, old.top)))
-                };
-
-                // Connect neighbors
-                let right_idx = if have_right {
-                    let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
-                    let right_idx = self.dag.add(Node::Trap(right));
-                    self.connect_lower_neighbors(Some(right_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(right_idx), old.upper_right);
-                    self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
-                    self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
-                    Some(right_idx)
-                } else {
-                    self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                    self.connect_upper_neighbors(Some(above_idx), old.upper_right);
-                    None
-                };
-
-                if below_idx != left_below.unwrap() {
-                    self.connect_upper_neighbors(left_below, Some(below_idx));
-                    self.connect_lower_neighbors(
-                        if old.lower_left == left_old {
-                            left_below
-                        } else {
-                            old.lower_left
-                        },
-                        Some(below_idx),
-                    );
-                }
-
-                if above_idx != left_above.unwrap() {
-                    self.connect_lower_neighbors(left_above, Some(above_idx));
-                    self.connect_upper_neighbors(
-                        if old.upper_left == left_old {
-                            left_above
-                        } else {
-                            old.upper_left
-                        },
-                        Some(above_idx),
-                    );
-                }
-
-                let left_idx = None;
-
-                (left_idx, right_idx, below_idx, above_idx)
+            let left_below_bottom = self.dag.get(left_below).unwrap().data.get_trap().bottom;
+            let below_idx = if left_below_bottom == old.bottom {
+                self.dag
+                    .entry(left_below)
+                    .and_modify(|node| node.get_trap_mut().rightp = old.rightp);
+                left_below
             } else {
-                // Middle trapezoid.
-                // Old trapezoid is neither the first nor last of the 3+ trapezoids that the edge
-                // intersects.
-                let left_below_bottom = self
-                    .dag
-                    .get(left_below.unwrap())
-                    .unwrap()
-                    .data
-                    .get_trap()
-                    .bottom;
-                let below_idx = if left_below_bottom == old.bottom {
-                    self.dag
-                        .entry(left_below.unwrap())
-                        .and_modify(|node| node.get_trap_mut().rightp = old.rightp);
-                    left_below.unwrap()
-                } else {
-                    self.dag.add(Node::Trap(Trapezoid::new(
-                        old.leftp, old.rightp, old.bottom, edge,
-                    )))
-                };
-
-                let left_above_top = self
-                    .dag
-                    .get(left_above.unwrap())
-                    .unwrap()
-                    .data
-                    .get_trap()
-                    .top;
-                let above_idx = if left_above_top == old.top {
-                    self.dag
-                        .entry(left_above.unwrap())
-                        .and_modify(|node| node.get_trap_mut().rightp = old.rightp);
-                    left_above.unwrap()
-                } else {
-                    self.dag.add(Node::Trap(Trapezoid::new(
-                        old.leftp, old.rightp, edge, old.top,
-                    )))
-                };
-
-                // Connect neighbors
-                if below_idx != left_below.unwrap() {
-                    self.connect_upper_neighbors(left_below, Some(below_idx));
-                    self.connect_lower_neighbors(
-                        if old.lower_left == left_old {
-                            left_below
-                        } else {
-                            old.lower_left
-                        },
-                        Some(below_idx),
-                    );
-                }
-
-                if above_idx != left_above.unwrap() {
-                    self.connect_lower_neighbors(left_above, Some(above_idx));
-                    self.connect_upper_neighbors(
-                        if old.upper_left == left_old {
-                            left_above
-                        } else {
-                            old.upper_left
-                        },
-                        Some(above_idx),
-                    );
-                }
-
-                self.connect_lower_neighbors(Some(below_idx), old.lower_right);
-                self.connect_upper_neighbors(Some(above_idx), old.upper_right);
-
-                let left_idx = None;
-                let right_idx = None;
-
-                (left_idx, right_idx, below_idx, above_idx)
+                self.dag.add(Node::Trap(Trapezoid::new(
+                    old.leftp, old.rightp, old.bottom, edge,
+                )))
             };
 
-            // Insert new nodes in the DAG and reuse the old trap node
-            let si = if let Some(left_idx) = left_idx {
-                let pi = old_trap_idx;
-                self.dag.entry(pi).and_modify(|node| *node = Node::X(p));
-                self.dag.entry(pi).append(left_idx);
-                if let Some(right_idx) = right_idx {
-                    let qi = self
-                        .dag
-                        .entry(pi)
-                        .append_new(Node::X(q))
-                        .expect("This should be a valid node");
-                    let si = self
-                        .dag
-                        .entry(qi)
-                        .append_new(Node::Y(edge))
-                        .expect("This should be a valid node");
-                    self.dag.entry(qi).append(right_idx);
-                    si
+            let left_above_top = self.dag.get(left_above).unwrap().data.get_trap().top;
+            let above_idx = if left_above_top == old.top {
+                self.dag
+                    .entry(left_above)
+                    .and_modify(|node| node.get_trap_mut().rightp = old.rightp);
+                left_above
+            } else {
+                self.dag.add(Node::Trap(Trapezoid::new(
+                    old.leftp, old.rightp, edge, old.top,
+                )))
+            };
+
+            // Connect neighbors
+            if below_idx != left_below {
+                self.connect_upper_neighbors(Some(left_below), Some(below_idx));
+                self.connect_lower_neighbors(
+                    if old.lower_left == Some(left_old) {
+                        Some(left_below)
+                    } else {
+                        old.lower_left
+                    },
+                    Some(below_idx),
+                );
+            }
+            if above_idx != left_above {
+                self.connect_lower_neighbors(Some(left_above), Some(above_idx));
+                self.connect_upper_neighbors(
+                    if old.upper_left == Some(left_old) {
+                        Some(left_above)
+                    } else {
+                        old.upper_left
+                    },
+                    Some(above_idx),
+                );
+            }
+            self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+            self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+
+            self.replace_old_trap_node(old_trap_idx, None, None, above_idx, below_idx, edge);
+
+            // Prepare next iteration
+            left_old = old_trap_idx;
+            left_above = above_idx;
+            left_below = below_idx;
+        }
+
+        // Last trapezoid.
+        //
+        // The old trapezoid is replaced by either 2 or 3 new trapezoids, depending on whether
+        // q is different from the the old trapezoid's rightp or not.
+
+        let old_trap_idx = trap_ids[trap_ids.len() - 1];
+        let old = &self.dag.get(old_trap_idx).unwrap().data.get_trap().clone();
+        let q_is_new = q != old.rightp;
+
+        let left_below_bottom = self.dag.get(left_below).unwrap().data.get_trap().bottom;
+        let below_idx = if left_below_bottom == old.bottom {
+            self.dag
+                .entry(left_below)
+                .and_modify(|node| node.get_trap_mut().rightp = q);
+            left_below
+        } else {
+            self.dag
+                .add(Node::Trap(Trapezoid::new(old.leftp, q, old.bottom, edge)))
+        };
+
+        let left_above_top = self.dag.get(left_above).unwrap().data.get_trap().top;
+        let above_idx = if left_above_top == old.top {
+            self.dag
+                .entry(left_above)
+                .and_modify(|node| node.get_trap_mut().rightp = q);
+            left_above
+        } else {
+            self.dag
+                .add(Node::Trap(Trapezoid::new(old.leftp, q, edge, old.top)))
+        };
+
+        // Connect neighbors
+        let right_idx = if q_is_new {
+            let right = Trapezoid::new(q, old.rightp, old.bottom, old.top);
+            let right_idx = self.dag.add(Node::Trap(right));
+            self.connect_lower_neighbors(Some(right_idx), old.lower_right);
+            self.connect_upper_neighbors(Some(right_idx), old.upper_right);
+            self.connect_lower_neighbors(Some(below_idx), Some(right_idx));
+            self.connect_upper_neighbors(Some(above_idx), Some(right_idx));
+            Some(right_idx)
+        } else {
+            self.connect_lower_neighbors(Some(below_idx), old.lower_right);
+            self.connect_upper_neighbors(Some(above_idx), old.upper_right);
+            None
+        };
+        if below_idx != left_below {
+            self.connect_upper_neighbors(Some(left_below), Some(below_idx));
+            self.connect_lower_neighbors(
+                if old.lower_left == Some(left_old) {
+                    Some(left_below)
                 } else {
-                    self.dag
-                        .entry(pi)
-                        .append_new(Node::Y(edge))
-                        .expect("This should be a valid node")
-                }
-            } else if let Some(idx) = right_idx {
+                    old.lower_left
+                },
+                Some(below_idx),
+            );
+        }
+        if above_idx != left_above {
+            self.connect_lower_neighbors(Some(left_above), Some(above_idx));
+            self.connect_upper_neighbors(
+                if old.upper_left == Some(left_old) {
+                    Some(left_above)
+                } else {
+                    old.upper_left
+                },
+                Some(above_idx),
+            );
+        }
+
+        self.replace_old_trap_node(old_trap_idx, None, right_idx, above_idx, below_idx, edge);
+    }
+
+    fn replace_old_trap_node(
+        &mut self,
+        old_trap_idx: usize,
+        left_idx: Option<usize>,
+        right_idx: Option<usize>,
+        above_idx: usize,
+        below_idx: usize,
+        edge: Edge,
+    ) {
+        let Edge { p, q, .. } = edge;
+
+        // We need to create a y-node and append the above and below trapezoid-node ids, but
+        // before we may need to create 1 or 2 x-nodes.
+        let si = match (left_idx, right_idx) {
+            (None, None) => {
+                // No x-node to add => just create the y-node
+                let si = old_trap_idx;
+                self.dag.entry(si).and_modify(|node| *node = Node::Y(edge));
+                si
+            }
+            (None, Some(right_idx)) => {
+                // One x-node to add with the q endpoint, then create the y-node
                 let qi = old_trap_idx;
                 self.dag.entry(qi).and_modify(|node| *node = Node::X(q));
                 let si = self
@@ -551,23 +561,41 @@ impl TrapMap {
                     .entry(qi)
                     .append_new(Node::Y(edge))
                     .expect("This should be a valid node");
-                self.dag.entry(qi).append(idx);
+                self.dag.entry(qi).append(right_idx);
                 si
-            } else {
-                let si = old_trap_idx;
-                self.dag.entry(si).and_modify(|node| *node = Node::Y(edge));
-                si
-            };
-            self.dag.entry(si).append(above_idx);
-            self.dag.entry(si).append(below_idx);
-
-            if !end_trap {
-                // Prepare for next iteration
-                left_old = Some(old_trap_idx);
-                left_above = Some(above_idx);
-                left_below = Some(below_idx);
             }
-        }
+            (Some(left_idx), None) => {
+                // One x-node to add with the p endpoint, then create the y-node
+                let pi = old_trap_idx;
+                self.dag.entry(pi).and_modify(|node| *node = Node::X(p));
+                self.dag.entry(pi).append(left_idx);
+                self.dag
+                    .entry(pi)
+                    .append_new(Node::Y(edge))
+                    .expect("This should be a valid node")
+            }
+            (Some(left_idx), Some(right_idx)) => {
+                // Two x-nodes to add (one for each endpoint), then create the y-node
+                let pi = old_trap_idx;
+                self.dag.entry(pi).and_modify(|node| *node = Node::X(p));
+                self.dag.entry(pi).append(left_idx);
+                let qi = self
+                    .dag
+                    .entry(pi)
+                    .append_new(Node::X(q))
+                    .expect("This should be a valid node");
+                let si = self
+                    .dag
+                    .entry(qi)
+                    .append_new(Node::Y(edge))
+                    .expect("This should be a valid node");
+                self.dag.entry(qi).append(right_idx);
+                si
+            }
+        };
+
+        self.dag.entry(si).append(above_idx);
+        self.dag.entry(si).append(below_idx);
     }
 
     pub(crate) fn connect_lower_neighbors(&mut self, left: Option<usize>, right: Option<usize>) {
