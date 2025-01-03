@@ -540,12 +540,42 @@ impl TrapMap {
     ) {
         let Edge { p, q, .. } = edge;
 
-        // Insert new nodes in the DAG and reuse the old trap node
-        let si = if let Some(left_idx) = left_idx {
-            let pi = old_trap_idx;
-            self.dag.entry(pi).and_modify(|node| *node = Node::X(p));
-            self.dag.entry(pi).append(left_idx);
-            if let Some(right_idx) = right_idx {
+        // We need to create a y-node and append the above and below trapezoid-node ids, but
+        // before we may need to create 1 or 2 x-nodes.
+        let si = match (left_idx, right_idx) {
+            (None, None) => {
+                // No x-node to add => just create the y-node
+                let si = old_trap_idx;
+                self.dag.entry(si).and_modify(|node| *node = Node::Y(edge));
+                si
+            }
+            (None, Some(right_idx)) => {
+                // One x-node to add with the q endpoint, then create the y-node
+                let qi = old_trap_idx;
+                self.dag.entry(qi).and_modify(|node| *node = Node::X(q));
+                let si = self
+                    .dag
+                    .entry(qi)
+                    .append_new(Node::Y(edge))
+                    .expect("This should be a valid node");
+                self.dag.entry(qi).append(right_idx);
+                si
+            }
+            (Some(left_idx), None) => {
+                // One x-node to add with the p endpoint, then create the y-node
+                let pi = old_trap_idx;
+                self.dag.entry(pi).and_modify(|node| *node = Node::X(p));
+                self.dag.entry(pi).append(left_idx);
+                self.dag
+                    .entry(pi)
+                    .append_new(Node::Y(edge))
+                    .expect("This should be a valid node")
+            }
+            (Some(left_idx), Some(right_idx)) => {
+                // Two x-nodes to add (one for each endpoint), then create the y-node
+                let pi = old_trap_idx;
+                self.dag.entry(pi).and_modify(|node| *node = Node::X(p));
+                self.dag.entry(pi).append(left_idx);
                 let qi = self
                     .dag
                     .entry(pi)
@@ -558,27 +588,9 @@ impl TrapMap {
                     .expect("This should be a valid node");
                 self.dag.entry(qi).append(right_idx);
                 si
-            } else {
-                self.dag
-                    .entry(pi)
-                    .append_new(Node::Y(edge))
-                    .expect("This should be a valid node")
             }
-        } else if let Some(idx) = right_idx {
-            let qi = old_trap_idx;
-            self.dag.entry(qi).and_modify(|node| *node = Node::X(q));
-            let si = self
-                .dag
-                .entry(qi)
-                .append_new(Node::Y(edge))
-                .expect("This should be a valid node");
-            self.dag.entry(qi).append(idx);
-            si
-        } else {
-            let si = old_trap_idx;
-            self.dag.entry(si).and_modify(|node| *node = Node::Y(edge));
-            si
         };
+
         self.dag.entry(si).append(above_idx);
         self.dag.entry(si).append(below_idx);
     }
