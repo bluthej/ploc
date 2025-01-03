@@ -10,6 +10,8 @@
 [![tests](https://github.com/bluthej/ploc/workflows/test/badge.svg)](https://github.com/bluthej/ploc/actions)
 [![Codecov](https://codecov.io/github/bluthej/ploc/coverage.svg?branch=main)](https://codecov.io/gh/bluthej/ploc)
 ![minimum rustc 1.65](https://img.shields.io/badge/rustc-1.65+-red.svg)
+[![crates-io](https://img.shields.io/crates/v/ploc.svg)](https://crates.io/crates/ploc)
+[![api-docs](https://docs.rs/ploc/badge.svg)](https://docs.rs/ploc)
 
 ## About
 
