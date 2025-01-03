@@ -273,7 +273,7 @@ impl TrapMap {
         trap_map
     }
 
-    pub(crate) fn add_edge(&mut self, edge: Edge) {
+    fn add_edge(&mut self, edge: Edge) {
         // Old trapezoids are replaced by up to 4 new trapezoids: left is to the left of the start
         // point p, below/above are below/above the inserted edge, and right is to the right of
         // the end point q.
@@ -282,6 +282,10 @@ impl TrapMap {
 
         let trap_ids = self.follow_segment(edge);
         let trap_count = trap_ids.len();
+        assert!(
+            trap_count > 0,
+            "Edges should always intersect at least one trapezoid."
+        );
 
         if trap_count == 1 {
             // Edge intersects a single trapezoid.
@@ -365,7 +369,6 @@ impl TrapMap {
         // Connect neighbors
         self.connect_lower_neighbors(Some(below_idx), old.lower_right);
         self.connect_upper_neighbors(Some(above_idx), old.upper_right);
-
         let left_idx = if p_is_new {
             let left = Trapezoid::new(old.leftp, p, old.bottom, old.top);
             let left_idx = self.dag.add(Node::Trap(left));
@@ -432,7 +435,6 @@ impl TrapMap {
                     Some(below_idx),
                 );
             }
-
             if above_idx != left_above {
                 self.connect_lower_neighbors(Some(left_above), Some(above_idx));
                 self.connect_upper_neighbors(
@@ -444,7 +446,6 @@ impl TrapMap {
                     Some(above_idx),
                 );
             }
-
             self.connect_lower_neighbors(Some(below_idx), old.lower_right);
             self.connect_upper_neighbors(Some(above_idx), old.upper_right);
 
@@ -501,7 +502,6 @@ impl TrapMap {
             self.connect_upper_neighbors(Some(above_idx), old.upper_right);
             None
         };
-
         if below_idx != left_below {
             self.connect_upper_neighbors(Some(left_below), Some(below_idx));
             self.connect_lower_neighbors(
@@ -513,7 +513,6 @@ impl TrapMap {
                 Some(below_idx),
             );
         }
-
         if above_idx != left_above {
             self.connect_lower_neighbors(Some(left_above), Some(above_idx));
             self.connect_upper_neighbors(
