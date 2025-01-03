@@ -9,7 +9,7 @@ license = "MIT"
 repository = "https://github.com/bluthej/ploc"
 documentation = "https://docs.rs/ploc/"
 readme = "README.md"
-keywords = ["geometry", "graph", "2d", "data-structures", "library", "algorithms"]
+keywords = ["geometry", "graph", "data-structures", "library", "algorithms"]
 categories = ["Data structures", "Science", "Algorithms"]
 exclude = ["/.github/*"]
 
