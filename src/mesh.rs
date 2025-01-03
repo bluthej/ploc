@@ -33,7 +33,6 @@ pub struct Mesh {
 #[derive(Debug, Clone)]
 enum Offsets {
     Implicit(usize),
-    #[allow(unused)]
     Explicit(Vec<usize>),
 }
 
@@ -64,8 +63,9 @@ impl<'a> Iterator for Cells<'a> {
     }
 }
 
+/// An iterator over the vertices of a particular cell of a mesh.
 #[derive(Clone)]
-pub(crate) struct CellVertices<'a> {
+pub struct CellVertices<'a> {
     points: &'a [[f64; 2]],
     cells: &'a [usize],
     end: usize,
@@ -91,7 +91,7 @@ impl<'a> Iterator for CellVertices<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for CellVertices<'a> {
+impl ExactSizeIterator for CellVertices<'_> {
     fn len(&self) -> usize {
         self.size_hint().0
     }
@@ -99,8 +99,7 @@ impl<'a> ExactSizeIterator for CellVertices<'a> {
 
 impl Mesh {
     /// Constructs a new [`Mesh`] from its array representation.
-    #[allow(unused)]
-    fn new(points: Vec<[f64; 2]>, cells: Vec<usize>, offsets: Vec<usize>) -> Result<Self> {
+    pub fn new(points: Vec<[f64; 2]>, cells: Vec<usize>, offsets: Vec<usize>) -> Result<Self> {
         Self::check_ids(points.len(), &cells)?;
 
         if let Some(&last) = offsets.last() {
@@ -116,6 +115,15 @@ impl Mesh {
             cells,
             offsets: Offsets::Explicit(offsets),
         })
+    }
+
+    /// Constructs an empty [`Mesh`].
+    pub fn empty() -> Self {
+        Self {
+            points: Vec::new(),
+            cells: Vec::new(),
+            offsets: Offsets::Explicit(vec![0]),
+        }
     }
 
     /// Constructs a new single cell type [`Mesh`] from its array representation and a stride.
@@ -193,8 +201,7 @@ impl Mesh {
     }
 
     /// Returns the number of cells in the [`Mesh`].
-    #[allow(unused)]
-    fn cell_count(&self) -> usize {
+    pub fn cell_count(&self) -> usize {
         match &self.offsets {
             Offsets::Implicit(stride) => self.cells.len() / stride,
             Offsets::Explicit(offsets) => offsets.len() - 1,
@@ -211,7 +218,7 @@ impl Mesh {
         self.cells.len()
     }
 
-    /// An iterator over the cells of the [`Mesh`].
+    /// Returns an iterator over the cells of the [`Mesh`].
     pub(crate) fn cells(&self) -> Cells<'_> {
         Cells {
             cells: &self.cells,
@@ -220,14 +227,13 @@ impl Mesh {
         }
     }
 
-    /// An iterator over the vertices of the [`Mesh`].
+    /// Returns an iterator over the vertices of the [`Mesh`].
     pub(crate) fn points(&self) -> Iter<[f64; 2]> {
         self.points.iter()
     }
 
-    /// An iterator over the vertices of a particular cell.
-    #[allow(unused)]
-    pub(crate) fn cell_vertices(&self, idx: usize) -> CellVertices {
+    /// Returns an iterator over the vertices of a particular cell.
+    pub fn cell_vertices(&self, idx: usize) -> CellVertices {
         let (start, end) = match &self.offsets {
             Offsets::Implicit(stride) if idx * stride < self.cells.len() => {
                 (idx * stride, (idx + 1) * stride)
@@ -353,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_offsets_array_return_error() {
+    fn empty_offsets_array_returns_error() {
         let points = Vec::new();
         let cells = Vec::new();
         let offsets = Vec::new();
@@ -365,11 +371,7 @@ mod tests {
 
     #[test]
     fn create_empty_mesh() -> Result<()> {
-        let points = Vec::new();
-        let cells = Vec::new();
-        let offsets = vec![0];
-
-        let mesh = Mesh::new(points, cells, offsets)?;
+        let mesh = Mesh::empty();
 
         assert_eq!(mesh.cell_count(), 0);
 

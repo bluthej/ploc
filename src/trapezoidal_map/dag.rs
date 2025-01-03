@@ -29,12 +29,6 @@ impl<T> Dag<T> {
         Dag { arena: Vec::new() }
     }
 
-    /// Returns the number of nodes in the DAG.
-    #[allow(unused)]
-    pub(crate) fn count(&self) -> usize {
-        self.arena.len()
-    }
-
     /// Add a new node to the DAG. Returns the index of the node.
     pub(crate) fn add(&mut self, data: T) -> usize {
         let idx = self.arena.len();
@@ -135,6 +129,13 @@ impl<T> Entry<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl<T> Dag<T> {
+        /// Returns the number of nodes in the DAG.
+        pub fn count(&self) -> usize {
+            self.arena.len()
+        }
+    }
 
     #[test]
     fn create_empty_dag() {

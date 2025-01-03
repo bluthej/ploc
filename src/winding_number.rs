@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 /// A point of the 2D plane.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Point {
+pub struct Point {
     x: f64,
     y: f64,
 }
@@ -43,7 +43,7 @@ pub(crate) enum Positioning {
 }
 
 impl Point {
-    /// Test if a point is Left|On|Right of an infinite 2D line defined by two points.
+    /// Tests if a point is Left|On|Right of an infinite 2D line defined by two points.
     pub(crate) fn position<T>(&self, p1: T, p2: T) -> Positioning
     where
         T: Into<[f64; 2]>,
@@ -58,7 +58,7 @@ impl Point {
         }
     }
 
-    /// Compute the winding number for a [`Point`] in a polygon (defined by a slice of [`Point`]s).
+    /// Computes the winding number for a [`Point`] in a polygon (defined by a slice of [`Point`]s).
     ///
     /// This number can be:
     /// - `0` if the [`Point`] is not inside the polygon
@@ -66,7 +66,7 @@ impl Point {
     /// - `< 0` if the [`Point`] is inside the polygon and the polygon "winds" at least once around the [`Point`] clockwise
     ///
     /// For more information, see <https://web.archive.org/web/20130126163405/http://geomalgorithms.com/a03-_inclusion.html>.
-    fn wn<I>(&self, poly: I) -> isize
+    pub fn wn<I>(&self, poly: I) -> isize
     where
         I: IntoIterator,
         <I as IntoIterator>::IntoIter: Clone,
@@ -99,8 +99,8 @@ impl Point {
         wn
     }
 
-    #[allow(unused)]
-    pub(crate) fn is_inside<I>(&self, poly: I) -> bool
+    /// Returns `true` if the point is inside the input polygon.
+    pub fn is_inside<I>(&self, poly: I) -> bool
     where
         I: IntoIterator,
         <I as IntoIterator>::IntoIter: Clone,
