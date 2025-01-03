@@ -1,5 +1,3 @@
-#![deny(missing_docs)]
-
 //! Ploc is a library for efficient point location queries.
 //!
 //! It uses efficient data structures like trapezoidal maps,
@@ -33,6 +31,10 @@
 //! let locations = trap_map.locate_many(&query);
 //! assert_eq!(locations, vec![Some(0), Some(1), Some(2), Some(3)]);
 //! ```
+
+#![deny(missing_docs)]
+// Ploc types in rustdoc of other crates get linked to here.
+#![doc(html_root_url = "https://docs.rs/ploc/0.1.0")]
 
 mod mesh;
 mod point_locator;

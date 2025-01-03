@@ -2,6 +2,16 @@
 name = "ploc"
 version = "0.1.0"
 edition = "2021"
+authors = ["Joffrey Bluthé <joffrey.bluthe@e.email>"]
+description = "Point location library"
+rust-version = "1.65"
+license = "MIT"
+repository = "https://github.com/bluthej/ploc"
+documentation = "https://docs.rs/ploc/"
+readme = "README.md"
+keywords = ["geometry", "graph", "2d", "data-structures", "library", "algorithms"]
+categories = ["Data structures", "Science", "Algorithms"]
+exclude = ["/.github/*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,6 +27,7 @@ smallvec = "1.13.2"
 criterion = "0.5.1"
 proptest = "1.2.0"
 serde = "1.0.131" # for -Zminimal-versions, via criterion
+version-sync = "0.9.5"
 
 [[bench]]
 name = "comparison_with_rectilinear_locator"
