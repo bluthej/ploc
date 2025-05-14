@@ -34,7 +34,7 @@
 
 #![deny(missing_docs)]
 // Ploc types in rustdoc of other crates get linked to here.
-#![doc(html_root_url = "https://docs.rs/ploc/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/ploc/0.1.1")]
 
 mod mesh;
 mod point_locator;
