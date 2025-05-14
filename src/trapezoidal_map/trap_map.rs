@@ -41,6 +41,7 @@ use crate::winding_number::{Point, Positioning};
 /// of the resulting data structure!
 ///
 /// [De Berg et al.]: https://doi.org/10.1007/978-3-540-77974-2
+#[derive(Debug)]
 pub struct TrapMap {
     pub(crate) dag: Dag<Node>,
     pub(crate) vertices: Vec<[f64; 2]>,
@@ -73,9 +74,10 @@ impl Node {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) struct Edge {
-    pub(crate) p: usize,
-    pub(crate) q: usize,
-    pub(crate) face: usize,
+    p: usize,
+    q: usize,
+    face_above: Option<usize>,
+    face_below: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +153,12 @@ impl Default for BoundingBox {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Orientation {
+    Counterclockwise,
+    Clockwise,
+}
+
 impl TrapMap {
     pub(crate) fn new() -> Self {
         Self {
@@ -183,20 +191,57 @@ impl TrapMap {
         let mut righties = HashSet::with_capacity(n_edges);
         let mut vertex_faces = vec![None; n_vertices];
         for (face, cell) in mesh.cells().enumerate() {
+            // We need to determine the orientation of the current cell in order to know if the
+            // face is to the left or to the right of each of its edges.
+            // To do so, we find the leftmost point (and pick the bottommost one in case of ties),
+            // and then determine the sign of the angle at that point.
+            // See: https://en.wikipedia.org/wiki/Curve_orientation#Orientation_of_a_simple_polygon
+            let orientation = {
+                let b = cell
+                    .iter()
+                    .enumerate()
+                    .map(|(b, &idx)| (b, mesh.coords(idx)))
+                    .min_by(|(_, [x1, y1]), (_, [x2, y2])| {
+                        x2.total_cmp(x1).then_with(|| y2.total_cmp(y1))
+                    })
+                    .map(|(b, _)| b)
+                    .unwrap();
+                let a = if b == 0 { cell.len() - 1 } else { b - 1 };
+                let c = if b == cell.len() - 1 { 0 } else { b + 1 };
+                let [xa, ya] = mesh.coords(cell[a]);
+                let [xb, yb] = mesh.coords(cell[b]);
+                let [xc, yc] = mesh.coords(cell[c]);
+                let det = (xb - xa) * (yc - ya) - (xc - xa) * (yb - ya);
+                if det > 0. {
+                    Orientation::Counterclockwise
+                } else {
+                    Orientation::Clockwise
+                }
+            };
             for (&p, &q) in cell.iter().circular_tuple_windows() {
                 if vertex_faces[p].is_none() {
                     vertex_faces[p] = Some(face);
                 }
-                let edge = Edge { p, q, face };
                 let [x1, y1] = mesh.coords(p);
                 let [x2, y2] = mesh.coords(q);
                 if matches!(
                     x2.total_cmp(&x1).then_with(|| y2.total_cmp(&y1)),
                     Ordering::Greater
                 ) {
-                    edges.push(Some(edge));
                     // Remove twin if encountered before
-                    lefties.remove(&[q, p]);
+                    let twin_face = lefties.remove(&[q, p]).map(|(face, _, _)| face);
+
+                    let (face_above, face_below) = match orientation {
+                        Orientation::Counterclockwise => (Some(face), twin_face),
+                        Orientation::Clockwise => (twin_face, Some(face)),
+                    };
+                    edges.push(Some(Edge {
+                        p,
+                        q,
+                        face_above,
+                        face_below,
+                    }));
+
                     // Remember we have visited this righty
                     righties.insert([p, q]);
                 } else if !righties.contains(&[q, p]) {
@@ -204,15 +249,24 @@ impl TrapMap {
                     // We don't know yet if the righty twin exists in the mesh, but in case it
                     // doesn't we store this edge along with the corresponding face and the current
                     // index in the list of edges
-                    lefties.insert([p, q], [face, edges.len()]);
+                    lefties.insert([p, q], (face, edges.len(), orientation));
                     edges.push(None);
                 }
             }
         }
         // By the end of the loop we should only have lonely lefties in the hashmap
         // We need to insert their twins in the vec of edges!
-        for ([p, q], [face, idx]) in lefties {
-            edges[idx] = Some(Edge { p: q, q: p, face });
+        for ([p, q], (face, idx, orientation)) in lefties {
+            let (face_above, face_below) = match orientation {
+                Orientation::Counterclockwise => (None, Some(face)),
+                Orientation::Clockwise => (Some(face), None),
+            };
+            edges[idx] = Some(Edge {
+                p: q,
+                q: p,
+                face_above,
+                face_below,
+            });
             if vertex_faces[p].is_none() {
                 vertex_faces[p] = Some(face);
             }
@@ -249,12 +303,14 @@ impl TrapMap {
             Edge {
                 p: usize::MAX,
                 q: usize::MAX,
-                face: usize::MAX,
+                face_above: None,
+                face_below: None,
             },
             Edge {
                 p: usize::MAX,
                 q: usize::MAX,
-                face: usize::MAX,
+                face_above: None,
+                face_below: None,
             },
         )));
     }
@@ -848,14 +904,15 @@ impl PointLocator for TrapMap {
         let node = self.find_node(point);
         let face = match node {
             Node::Trap(trap) => {
-                if trap.bottom.face == usize::MAX || trap.top.face == usize::MAX {
-                    usize::MAX
-                } else {
-                    trap.bottom.face
-                }
+                debug_assert_eq!(trap.bottom.face_above, trap.top.face_below);
+                trap.bottom.face_above.unwrap_or(usize::MAX)
             }
             Node::X(idx) => self.vertex_faces[*idx],
-            Node::Y(Edge { face, .. }) => *face,
+            Node::Y(Edge {
+                face_above,
+                face_below,
+                ..
+            }) => face_above.or(*face_below).unwrap_or(usize::MAX),
         };
 
         (face < usize::MAX).then_some(face)
@@ -918,17 +975,20 @@ pub(crate) mod tests {
         let first = Edge {
             p: 0,
             q: 1,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let second = Edge {
             p: 2,
             q: 1,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
         let third = Edge {
             p: 0,
             q: 2,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
 
         let mut trap_map = TrapMap::init_with_mesh(mesh);
@@ -968,17 +1028,20 @@ pub(crate) mod tests {
         let first = Edge {
             p: 0,
             q: 2,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
         let second = Edge {
             p: 0,
             q: 1,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let third = Edge {
             p: 2,
             q: 1,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
 
         let mut trap_map = TrapMap::init_with_mesh(mesh);
@@ -1018,22 +1081,26 @@ pub(crate) mod tests {
         let first = Edge {
             p: 0,
             q: 1,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let second = Edge {
             p: 1,
             q: 2,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let third = Edge {
             p: 0,
             q: 3,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
         let fourth = Edge {
             p: 2,
             q: 3,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
 
         let mut trap_map = TrapMap::init_with_mesh(mesh);
@@ -1112,17 +1179,20 @@ pub(crate) mod tests {
         let first = Edge {
             p: 0,
             q: 2,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
         let second = Edge {
             p: 0,
             q: 1,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let third = Edge {
             p: 2,
             q: 1,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
 
         let mut trap_map = TrapMap::init_with_mesh(mesh);
@@ -1153,22 +1223,26 @@ pub(crate) mod tests {
         let first = Edge {
             p: 0,
             q: 1,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let second = Edge {
             p: 1,
             q: 2,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
         let third = Edge {
             p: 0,
             q: 3,
-            face: 0,
+            face_above: None,
+            face_below: Some(0),
         };
         let fourth = Edge {
             p: 2,
             q: 3,
-            face: 0,
+            face_above: Some(0),
+            face_below: None,
         };
 
         let mut trap_map = TrapMap::init_with_mesh(mesh);
@@ -1288,6 +1362,37 @@ pub(crate) mod tests {
                 assert!(point.is_inside(cell));
             }
         });
+
+        Ok(())
+    }
+
+    #[test]
+    fn multiply_connected_triangulation() -> Result<()> {
+        //
+        //  5
+        //  +          +
+        //  |\         |\
+        //  | \        |2\
+        // 3+--+4      +--+
+        //  |\ |\      |\ |\
+        //  | \| \     |0\|1\
+        //  +--+--+    +--+--+
+        //  0  1  2
+        //
+        let mesh = Mesh::with_stride(
+            vec![[0., 0.], [1., 0.], [2., 0.], [0., 1.], [1., 1.], [0., 2.]],
+            vec![0, 1, 3, 1, 2, 4, 3, 4, 5],
+            3,
+        )?;
+
+        let trap_map = TrapMap::from_mesh(mesh);
+        // dbg!(&trap_map);
+
+        assert_eq!(trap_map.locate_one(&[1. / 3., 1. / 3.]), Some(0));
+        assert_eq!(trap_map.locate_one(&[4. / 3., 1. / 3.]), Some(1));
+        assert_eq!(trap_map.locate_one(&[1. / 3., 4. / 3.]), Some(2));
+        // There is no triangle "3"
+        assert!(dbg!(trap_map.locate_one(&[2. / 3., 2. / 3.])).is_none());
 
         Ok(())
     }
