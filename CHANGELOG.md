@@ -13,12 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [0.1.1] - 2025-05-15
+
+### Fixed
+
 - Results are now correct for multiply connected planar
   subdivisions (i.e. meshes with holes)
 
-### Removed
-
-## [0.0.1] - 2025-01-03
+## [0.1.0] - 2025-01-03
 
 ### Added
 
@@ -31,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests and proptests
 - Trapezoidal map data structure for fast queries
 
-[unreleased]: https://github.com/bluthej/ploc/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/bluthej/ploc/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/bluthej/ploc/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/bluthej/ploc/releases/tag/v0.1.0
 
