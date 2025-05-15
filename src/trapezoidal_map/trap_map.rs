@@ -265,7 +265,10 @@ impl TrapMap {
                 face_above,
                 face_below,
             });
-            vertex_faces[p].get_or_insert(face);
+            debug_assert!(
+                vertex_faces[p].is_some(),
+                "Every point should have been visited"
+            );
         }
         let vertex_faces: Vec<usize> = vertex_faces.iter().map(|f| f.unwrap()).collect();
         // There are still some `None`s in the list of edges, namely for lefties that do have a
