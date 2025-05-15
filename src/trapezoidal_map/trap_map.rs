@@ -219,9 +219,7 @@ impl TrapMap {
                 }
             };
             for (&p, &q) in cell.iter().circular_tuple_windows() {
-                if vertex_faces[p].is_none() {
-                    vertex_faces[p] = Some(face);
-                }
+                vertex_faces[p].get_or_insert(face);
                 let [x1, y1] = mesh.coords(p);
                 let [x2, y2] = mesh.coords(q);
                 if matches!(
@@ -267,9 +265,10 @@ impl TrapMap {
                 face_above,
                 face_below,
             });
-            if vertex_faces[p].is_none() {
-                vertex_faces[p] = Some(face);
-            }
+            debug_assert!(
+                vertex_faces[p].is_some(),
+                "Every point should have been visited"
+            );
         }
         let vertex_faces: Vec<usize> = vertex_faces.iter().map(|f| f.unwrap()).collect();
         // There are still some `None`s in the list of edges, namely for lefties that do have a
@@ -1381,12 +1380,11 @@ pub(crate) mod tests {
         //
         let mesh = Mesh::with_stride(
             vec![[0., 0.], [1., 0.], [2., 0.], [0., 1.], [1., 1.], [0., 2.]],
-            vec![0, 1, 3, 1, 2, 4, 3, 4, 5],
+            vec![0, 1, 3, 1, 2, 4, 3, 5, 4],
             3,
         )?;
 
         let trap_map = TrapMap::from_mesh(mesh);
-        // dbg!(&trap_map);
 
         assert_eq!(trap_map.locate_one(&[1. / 3., 1. / 3.]), Some(0));
         assert_eq!(trap_map.locate_one(&[4. / 3., 1. / 3.]), Some(1));
