@@ -1382,7 +1382,6 @@ pub(crate) mod tests {
         )?;
 
         let trap_map = TrapMap::from_mesh(mesh);
-        // dbg!(&trap_map);
 
         assert_eq!(trap_map.locate_one(&[1. / 3., 1. / 3.]), Some(0));
         assert_eq!(trap_map.locate_one(&[4. / 3., 1. / 3.]), Some(1));
