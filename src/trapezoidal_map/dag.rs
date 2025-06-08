@@ -1,5 +1,5 @@
 use smallvec::SmallVec;
-use std::slice::Iter;
+use std::{collections::HashSet, slice::Iter};
 
 /// A Directed Acyclic Graph (DAG).
 ///
@@ -57,18 +57,22 @@ impl<T> Dag<T> {
     }
 
     pub(crate) fn depth(&self, idx: usize) -> Option<usize> {
-        (idx < self.arena.len()).then_some({
-            let parents = &self.get(idx).expect("Should be valid").parents;
-            if parents.is_empty() {
-                0
-            } else {
-                1 + parents
-                    .iter()
-                    .map(|&p| self.depth(p).expect("Should return something"))
-                    .min()
-                    .unwrap()
+        if idx >= self.arena.len() {
+            return None;
+        }
+
+        let mut to_visit = HashSet::new();
+        to_visit.insert(0);
+        let mut buf = HashSet::new();
+        let mut depth = 0;
+        while !to_visit.contains(&idx) {
+            for id in to_visit.drain() {
+                buf.extend(self.get(id).expect("Should be valid").children.iter());
             }
-        })
+            std::mem::swap(&mut to_visit, &mut buf);
+            depth += 1;
+        }
+        Some(depth)
     }
 }
 
@@ -76,7 +80,6 @@ impl<T> Dag<T> {
 #[derive(Debug, Default)]
 pub(crate) struct Node<T> {
     pub(crate) data: T,
-    pub(crate) parents: Vec<usize>,
     pub(crate) children: SmallVec<[usize; 2]>,
 }
 
@@ -84,7 +87,6 @@ impl<T> Node<T> {
     fn new(data: T) -> Self {
         Node {
             data,
-            parents: Vec::new(),
             children: SmallVec::new(),
         }
     }
@@ -106,8 +108,7 @@ impl<T> Entry<'_, T> {
 
     /// Appends an existing [`Node`] to the entry, if it exists.
     pub(crate) fn append(&mut self, idx: usize) -> Option<usize> {
-        if let Some(node) = self.dag.get_mut(idx) {
-            node.parents.push(self.idx);
+        if self.dag.get(idx).is_some() {
             self.dag.arena[self.idx].children.push(idx);
             Some(idx)
         } else {
@@ -148,7 +149,6 @@ mod tests {
     fn create_node() {
         let node = Node::new(0);
 
-        assert_eq!(node.parents.len(), 0);
         assert_eq!(node.children.len(), 0);
     }
 
@@ -156,15 +156,17 @@ mod tests {
     fn add_node_to_dag() {
         let mut dag = Dag::new();
 
-        let idx = dag.add(42);
-        assert_eq!(idx, 0);
+        let idx_42 = dag.add(42);
+        assert_eq!(idx_42, 0);
         assert_eq!(dag.count(), 1);
-        assert_eq!(dag.depth(idx), Some(0));
+        assert_eq!(dag.depth(idx_42), Some(0));
 
-        let idx = dag.add(314);
-        assert_eq!(idx, 1);
+        let idx_314 = dag.entry(idx_42).append_new(314).unwrap();
+        assert_eq!(idx_314, 1);
         assert_eq!(dag.count(), 2);
-        assert_eq!(dag.depth(idx), Some(0));
+        assert_eq!(dag.depth(idx_314), Some(1));
+
+        assert_eq!(dag.depth(2), None);
     }
 
     #[test]
