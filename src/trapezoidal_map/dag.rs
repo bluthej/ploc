@@ -165,6 +165,8 @@ mod tests {
         assert_eq!(idx_314, 1);
         assert_eq!(dag.count(), 2);
         assert_eq!(dag.depth(idx_314), Some(1));
+
+        assert_eq!(dag.depth(2), None);
     }
 
     #[test]
