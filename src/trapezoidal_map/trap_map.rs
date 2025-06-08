@@ -286,6 +286,10 @@ impl TrapMap {
             trap_map.add_edge(edge);
         }
 
+        if cfg!(debug_assertions) {
+            trap_map.check();
+        }
+
         trap_map
     }
 
@@ -802,16 +806,11 @@ impl TrapMap {
     pub fn check(&self) {
         // Sanity checks
         for node in self.dag.iter() {
-            assert!(
-                !(node.children.is_empty() && node.parents.is_empty()),
-                "There shouldn't be isolated nodes"
+            assert_eq!(
+                matches!(node.data, Node::Trap(..)),
+                node.children.is_empty(),
+                "All leaf nodes should be trapezoids and vice-versa"
             );
-            if node.children.is_empty() {
-                assert!(
-                    matches!(node.data, Node::Trap(..)),
-                    "All leaf nodes should be trapezoids"
-                );
-            }
         }
     }
 
