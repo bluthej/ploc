@@ -11,9 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- In `TrapMap::check` we now check that leaf nodes are
+  _exactly_ trapezoid nodes (previously we would only
+  check that leaf nodes were trapezoid nodes, but not
+  the reverse)
+
 ### Fixed
 
 ### Removed
+
+- The `parents` field of the `Node` type (it was only
+  `pub(crate)` so this is not even a breaking change)
 
 ## [0.1.1] - 2025-05-15
 
