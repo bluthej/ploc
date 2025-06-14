@@ -202,7 +202,7 @@ impl TrapMap {
                     .enumerate()
                     .map(|(b, &idx)| (b, mesh.coords(idx)))
                     .min_by(|(_, [x1, y1]), (_, [x2, y2])| {
-                        x2.total_cmp(x1).then_with(|| y2.total_cmp(y1))
+                        x1.total_cmp(x2).then_with(|| y1.total_cmp(y2))
                     })
                     .map(|(b, _)| b)
                     .unwrap();
@@ -211,6 +211,11 @@ impl TrapMap {
                 let [xa, ya] = mesh.coords(cell[a]);
                 let [xb, yb] = mesh.coords(cell[b]);
                 let [xc, yc] = mesh.coords(cell[c]);
+                debug_assert!(
+                    mesh.coords(cell[b]) <= mesh.coords(cell[a])
+                        && mesh.coords(cell[b]) <= mesh.coords(cell[c]),
+                    "`b` should be the leftmost bottommost vertex"
+                );
                 let det = (xb - xa) * (yc - ya) - (xc - xa) * (yb - ya);
                 if det > 0. {
                     Orientation::Counterclockwise
