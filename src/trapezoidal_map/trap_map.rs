@@ -1,10 +1,7 @@
 use itertools::Itertools;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-};
+use std::{cmp::Ordering, collections::HashMap};
 
 use crate::mesh::Mesh;
 use crate::point_locator::PointLocator;
@@ -188,7 +185,7 @@ impl TrapMap {
         let n_vertices = mesh.vertex_count();
         let mut edges = Vec::with_capacity(n_edges);
         let mut lefties = HashMap::with_capacity(n_edges);
-        let mut righties = HashSet::with_capacity(n_edges);
+        let mut righties = HashMap::with_capacity(n_edges);
         let mut vertex_faces = vec![None; n_vertices];
         for (face, cell) in mesh.cells().enumerate() {
             // We need to determine the orientation of the current cell in order to know if the
@@ -246,8 +243,16 @@ impl TrapMap {
                     }));
 
                     // Remember we have visited this righty
-                    righties.insert([p, q]);
-                } else if !righties.contains(&[q, p]) {
+                    righties.insert([p, q], edges.len() - 1);
+                } else if let Some(&edge_id) = righties.get(&[q, p]) {
+                    // This is a lefty and we have seen its righty before => we need to set this
+                    // face as below/above the righty
+                    let edge = edges[edge_id].as_mut().expect("Edge should be Some");
+                    let _ = match orientation {
+                        Orientation::Counterclockwise => edge.face_below.insert(face),
+                        Orientation::Clockwise => edge.face_above.insert(face),
+                    };
+                } else {
                     // This is a lefty and we haven't seen its righty twin yet
                     // We don't know yet if the righty twin exists in the mesh, but in case it
                     // doesn't we store this edge along with the corresponding face and the current
@@ -1395,6 +1400,31 @@ pub(crate) mod tests {
         assert_eq!(trap_map.locate_one(&[1. / 3., 4. / 3.]), Some(2));
         // There is no triangle "3"
         assert!(dbg!(trap_map.locate_one(&[2. / 3., 2. / 3.])).is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn two_triangles_with_righty_of_twin_visited_first() -> Result<()> {
+        //
+        //  2  3
+        //  +--+
+        //  |\0|
+        //  |1\|
+        //  +--+
+        //  0  1
+        //
+        // Since the top triangle is the first one to be added, edge (2, 1) is visited before (1, 2)
+        let mesh = Mesh::with_stride(
+            vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
+            vec![1, 3, 2, 0, 1, 2],
+            3,
+        )?;
+
+        let trap_map = TrapMap::from_mesh(mesh);
+
+        assert_eq!(trap_map.locate_one(&[0.1, 0.1]), Some(1));
+        assert_eq!(trap_map.locate_one(&[0.9, 0.9]), Some(0));
 
         Ok(())
     }
