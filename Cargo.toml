@@ -30,6 +30,7 @@ serde = "1.0.131" # for -Zminimal-versions, via criterion
 version-sync = "0.9.5"
 proc-macro2 = "1.0.95" # for cargo-docs-rs (seems related to https://github.com/dtolnay/proc-macro2/issues/499)
 rstest = "0.18.2"
+delaunator = "1.0.2"
 
 [[bench]]
 name = "comparison_with_rectilinear_locator"

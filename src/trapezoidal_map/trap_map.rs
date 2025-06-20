@@ -935,13 +935,6 @@ pub(crate) mod tests {
 
     use super::*;
 
-    prop_compose! {
-        fn coords_in_range(xmin: f64, xmax: f64, ymin: f64, ymax: f64)
-                          (x in xmin..xmax, y in ymin..ymax) -> [f64; 2] {
-           [x, y]
-        }
-    }
-
     #[test]
     fn empty_trapezoidal_map() {
         let trap_map = TrapMap::empty();
@@ -1154,8 +1147,15 @@ pub(crate) mod tests {
         assert_eq!(multiply_connected_triangulation.locate_one(&point), cell_id);
     }
 
+    prop_compose! {
+        fn coords_in_range(xmin: f64, xmax: f64, ymin: f64, ymax: f64)
+                          (x in xmin..xmax, y in ymin..ymax) -> [f64; 2] {
+           [x, y]
+        }
+    }
+
     #[test]
-    fn trapezoidal_map_proptest() {
+    fn grid_proptest() {
         let (xmin, xmax) = (0., 10.);
         let (ymin, ymax) = (0., 10.);
         let (nx, ny) = (6, 6); // Use numbers that don't divide the sides evenly on purpose
@@ -1175,8 +1175,69 @@ pub(crate) mod tests {
                     panic!("All points should be in a cell but {:?} is not", &point);
                 };
                 let cell = mesh.cell_vertices(*idx).cloned();
-                assert!(point.is_inside(cell));
+                prop_assert!(point.is_inside(cell));
             }
         });
+    }
+
+    fn barycentric_coordinates() -> impl Strategy<Value = (f64, f64, f64)> {
+        let eps = 1e-12;
+        (eps..=(1.0 - eps))
+            .prop_flat_map(move |wa| (Just(wa), eps..=(1.0 - wa - eps)))
+            .prop_flat_map(|(wa, wb)| (Just(wa), Just(wb), Just(1. - wa - wb)))
+    }
+
+    proptest! {
+        #[test]
+        fn triangulation_proptest(points in proptest::collection::vec(coords_in_range(0., 1., 0., 1.), 16)) {
+            // We start from points generated in the unit square, and we translate them to end up
+            // with points placed on a regular grid, each one being randomly placed in its own cell
+            let n = points.len();
+            let sqrt_n = (n as f64).sqrt() as usize;
+            if sqrt_n * sqrt_n != n {
+                panic!("Size of points should be a perfect square");
+            }
+            let points: Vec<_> = points
+                .into_iter()
+                .enumerate()
+                .map(|(i, [x, y])| {
+                    let j = i / sqrt_n;
+                    let i = i % sqrt_n;
+                    [x + i as f64, y + j as f64]
+                })
+                .collect();
+            let pts: Vec<_> = points
+                .iter()
+                .map(|&[x, y]| delaunator::Point { x, y })
+                .collect();
+
+            let triangulation = delaunator::triangulate(&pts);
+            let triangles: Vec<_> = triangulation
+                .triangles
+                .chunks(3)
+                .map(|a| [a[0], a[1], a[2]])
+                .collect();
+
+            let mesh = Mesh::with_stride(points.clone(), triangulation.triangles, 3).unwrap();
+            let locator = TrapMap::from_mesh(mesh);
+
+            let expected = (0..triangles.len()).map(Some).collect::<Vec<_>>();
+            proptest!(|(bcoords in proptest::collection::vec(barycentric_coordinates(), triangles.len()))| {
+                // We construct one query point per triangle, using barycentric coordinates.
+                // That way we know that the point is supposed to be in the triangle
+                let query_points:Vec<_> = triangles.iter().zip(bcoords).map(|(&[a, b, c], (wa, wb, wc))| {
+                    let [xa, ya] = points[a];
+                    let [xb, yb] = points[b];
+                    let [xc, yc] = points[c];
+                    let x = wa * xa + wb * xb + wc * xc;
+                    let y = wa * ya + wb * yb + wc * yc;
+                    [x, y]
+                }).collect();
+
+                let locations = locator.locate_many(&query_points);
+
+                prop_assert_eq!(&locations, &expected);
+            });
+        }
     }
 }
