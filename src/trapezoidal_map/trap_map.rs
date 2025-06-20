@@ -930,8 +930,8 @@ impl PointLocator for TrapMap {
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::winding_number::Point;
-    use anyhow::Result;
     use proptest::prelude::*;
+    use rstest::*;
 
     use super::*;
 
@@ -943,26 +943,18 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn initialize_empty_trapezoidal_map() {
+    fn empty_trapezoidal_map() {
         let trap_map = TrapMap::empty();
 
         assert_eq!(trap_map.trap_count(), 1);
+        assert_eq!(trap_map.locate_one(&[0., 0.]), None);
     }
 
     #[test]
-    fn locate_one_in_empty_trapezoidal_map() {
-        let trap_map = TrapMap::empty();
-
-        let point = [0., 0.];
-
-        assert_eq!(trap_map.locate_one(&point), None);
-    }
-
-    #[test]
-    fn bounding_box() -> Result<()> {
+    fn bounding_box() {
         let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let cells = vec![0, 1, 2, 3];
-        let mesh = Mesh::with_stride(points, cells, 4)?;
+        let mesh = Mesh::with_stride(points, cells, 4).unwrap();
         let trap_map = TrapMap::init_with_mesh(mesh);
 
         let bbox = trap_map.bbox;
@@ -971,389 +963,205 @@ pub(crate) mod tests {
         assert!(bbox.xmax > 1.);
         assert!(bbox.ymin < 0.);
         assert!(bbox.ymax > 1.);
-
-        Ok(())
     }
 
-    #[test]
-    fn add_edges() -> Result<()> {
+    //    2
+    //    +
+    //   / \
+    //  +---+
+    //  0   1
+    #[fixture]
+    #[once]
+    fn single_triangle() -> TrapMap {
         let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
         let cells = vec![0, 1, 2];
-        let mesh = Mesh::with_stride(points, cells, 3)?;
-        let first = Edge {
-            p: 0,
-            q: 1,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let second = Edge {
-            p: 2,
-            q: 1,
-            face_above: None,
-            face_below: Some(0),
-        };
-        let third = Edge {
-            p: 0,
-            q: 2,
-            face_above: None,
-            face_below: Some(0),
-        };
-
-        let mut trap_map = TrapMap::init_with_mesh(mesh);
-
-        // Add the first edge
-        trap_map.add_edge(first);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 4);
-        assert_eq!(trap_map.x_node_count(), 2);
-        assert_eq!(trap_map.y_node_count(), 1);
-
-        // Add the second edge
-        trap_map.add_edge(second);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 6);
-        assert_eq!(trap_map.x_node_count(), 3);
-        assert_eq!(trap_map.y_node_count(), 2);
-
-        // Add the third edge
-        trap_map.add_edge(third);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 7);
-        assert_eq!(trap_map.x_node_count(), 3);
-        assert_eq!(trap_map.y_node_count(), 3);
-
-        Ok(())
+        let mesh = Mesh::with_stride(points, cells, 3).unwrap();
+        TrapMap::from_mesh(mesh)
     }
 
-    #[test]
-    fn add_edges_different_order() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let cells = vec![0, 1, 2];
-        let mesh = Mesh::with_stride(points, cells, 3)?;
-        let first = Edge {
-            p: 0,
-            q: 2,
-            face_above: None,
-            face_below: Some(0),
-        };
-        let second = Edge {
-            p: 0,
-            q: 1,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let third = Edge {
-            p: 2,
-            q: 1,
-            face_above: None,
-            face_below: Some(0),
-        };
-
-        let mut trap_map = TrapMap::init_with_mesh(mesh);
-
-        // Add the first edge
-        trap_map.add_edge(first);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 4);
-        assert_eq!(trap_map.x_node_count(), 2);
-        assert_eq!(trap_map.y_node_count(), 1);
-
-        // Add the second edge
-        trap_map.add_edge(second);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 6);
-        assert_eq!(trap_map.x_node_count(), 3);
-        assert_eq!(trap_map.y_node_count(), 3);
-
-        // Add the third edge
-        trap_map.add_edge(third);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 7);
-        assert_eq!(trap_map.x_node_count(), 3);
-        assert_eq!(trap_map.y_node_count(), 4);
-
-        Ok(())
+    #[rstest]
+    #[case::properly_inside([0.5, 0.1], Some(0))]
+    #[case::first_edge([0.5, 0.], Some(0))]
+    #[case::second_edge([0.25, 0.25], Some(0))]
+    #[case::third_edge([0.75, 0.25], Some(0))]
+    #[case::first_vertex([0., 0.], Some(0))]
+    #[case::second_vertex([1., 0.], Some(0))]
+    #[case::third_vertex([0.5, 0.5], Some(0))]
+    #[case::outside_below([0.5, -0.1], None)]
+    #[case::outside_above_to_the_right([0.8, 0.8], None)]
+    #[case::outside_above_to_the_left([0.2, 0.8], None)]
+    #[case::outside_to_the_right([1.2, 0.8], None)]
+    #[case::outside_to_the_left([-0.2, 0.8], None)]
+    fn locate_points_in_single_triangle(
+        single_triangle: &TrapMap,
+        #[case] point: [f64; 2],
+        #[case] cell_id: Option<usize>,
+    ) {
+        assert_eq!(single_triangle.locate_one(&point), cell_id);
     }
 
-    #[test]
-    fn add_edges_with_3plus_intersections() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [2., 0.], [3., 1.]];
-        let cells = vec![0, 1, 2, 3];
-        let mesh = Mesh::with_stride(points, cells, 4)?;
-        let first = Edge {
-            p: 0,
-            q: 1,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let second = Edge {
-            p: 1,
-            q: 2,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let third = Edge {
-            p: 0,
-            q: 3,
-            face_above: None,
-            face_below: Some(0),
-        };
-        let fourth = Edge {
-            p: 2,
-            q: 3,
-            face_above: Some(0),
-            face_below: None,
-        };
-
-        let mut trap_map = TrapMap::init_with_mesh(mesh);
-
-        // Add the first edge
-        trap_map.add_edge(first);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 4);
-        assert_eq!(trap_map.x_node_count(), 2);
-        assert_eq!(trap_map.y_node_count(), 1);
-
-        // Add the second edge
-        trap_map.add_edge(second);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 6);
-        assert_eq!(trap_map.x_node_count(), 3);
-        assert_eq!(trap_map.y_node_count(), 2);
-
-        // Add the third edge
-        trap_map.add_edge(third);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 8);
-        assert_eq!(trap_map.x_node_count(), 4);
-        assert_eq!(trap_map.y_node_count(), 5);
-
-        // Add the fourth edge
-        trap_map.add_edge(fourth);
-
-        // Check the number of different nodes
-        assert_eq!(trap_map.trap_count(), 9);
-        assert_eq!(trap_map.x_node_count(), 4);
-        assert_eq!(trap_map.y_node_count(), 6);
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_in_single_triangle() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let cells = vec![0, 1, 2];
-        let mesh = Mesh::with_stride(points, cells, 3)?;
-
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        // Locate a point inside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
-
-        // Edge cases
-        assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(0));
-
-        // Corner cases
-        assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
-
-        // Locate points outside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
-        assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
-        assert_eq!(trap_map.locate_one(&[0.2, 0.8]), None); // above to the left
-        assert_eq!(trap_map.locate_one(&[1.2, 0.8]), None); // to the right
-        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_in_single_triangle_different_order() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [0.5, 0.5]];
-        let cells = vec![0, 1, 2];
-        let mesh = Mesh::with_stride(points, cells, 3)?;
-        let first = Edge {
-            p: 0,
-            q: 2,
-            face_above: None,
-            face_below: Some(0),
-        };
-        let second = Edge {
-            p: 0,
-            q: 1,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let third = Edge {
-            p: 2,
-            q: 1,
-            face_above: None,
-            face_below: Some(0),
-        };
-
-        let mut trap_map = TrapMap::init_with_mesh(mesh);
-
-        // Add the edges
-        trap_map.add_edge(first);
-        trap_map.add_edge(second);
-        trap_map.add_edge(third);
-
-        // Locate a point inside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, 0.1]), Some(0));
-
-        // Locate points outside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
-        assert_eq!(trap_map.locate_one(&[0.8, 0.8]), None); // above to the right
-        assert_eq!(trap_map.locate_one(&[0.2, 0.8]), None); // above to the left
-        assert_eq!(trap_map.locate_one(&[1.2, 0.8]), None); // to the right
-        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_with_3plus_intersections() -> Result<()> {
-        let points = vec![[0., 0.], [1., 0.], [2., 0.], [3., 1.]];
-        let cells = vec![0, 1, 2, 3];
-        let mesh = Mesh::with_stride(points, cells, 4)?;
-        let first = Edge {
-            p: 0,
-            q: 1,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let second = Edge {
-            p: 1,
-            q: 2,
-            face_above: Some(0),
-            face_below: None,
-        };
-        let third = Edge {
-            p: 0,
-            q: 3,
-            face_above: None,
-            face_below: Some(0),
-        };
-        let fourth = Edge {
-            p: 2,
-            q: 3,
-            face_above: Some(0),
-            face_below: None,
-        };
-
-        let mut trap_map = TrapMap::init_with_mesh(mesh);
-
-        // Add the edges
-        trap_map.add_edge(first);
-        trap_map.add_edge(second);
-        trap_map.add_edge(third);
-        trap_map.add_edge(fourth);
-
-        // Locate a point inside the triangle
-        assert_eq!(trap_map.locate_one(&[1., 0.1]), Some(0));
-
-        // Locate points outside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // below
-        assert_eq!(trap_map.locate_one(&[0.5, 3.8]), None); // above
-        assert_eq!(trap_map.locate_one(&[4.2, 0.8]), None); // to the right
-        assert_eq!(trap_map.locate_one(&[-0.2, 0.8]), None); // to the left
-
-        Ok(())
-    }
-
-    #[test]
-    fn locate_points_in_single_square() -> Result<()> {
+    //  3  2
+    //  +--+
+    //  |  |
+    //  +--+
+    //  0  1
+    #[fixture]
+    #[once]
+    fn single_square() -> TrapMap {
         let points = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
         let cells = vec![0, 1, 2, 3];
-        let mesh = Mesh::with_stride(points, cells, 4)?;
-
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        // Locate points inside the square
-        assert_eq!(trap_map.locate_one(&[0.5, 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.1, 0.1]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.1, 0.9]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.9, 0.9]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.9, 0.1]), Some(0));
-
-        // Edge cases
-        assert_eq!(trap_map.locate_one(&[0.5, 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0., 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.5]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.5, 1.]), Some(0));
-
-        // Corner cases
-        assert_eq!(trap_map.locate_one(&[0., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[1., 1.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0., 1.]), Some(0));
-
-        // Locate points outside the triangle
-        assert_eq!(trap_map.locate_one(&[0.5, -0.1]), None); // south
-        assert_eq!(trap_map.locate_one(&[1.5, -0.1]), None); // south-east
-        assert_eq!(trap_map.locate_one(&[1.5, 0.8]), None); // east
-        assert_eq!(trap_map.locate_one(&[1.5, 1.8]), None); // north-east
-        assert_eq!(trap_map.locate_one(&[0.5, 1.8]), None); // north
-        assert_eq!(trap_map.locate_one(&[-0.5, 1.8]), None); // north-west
-        assert_eq!(trap_map.locate_one(&[-0.5, 0.8]), None); // west
-        assert_eq!(trap_map.locate_one(&[-0.5, -0.8]), None); // south-west
-
-        Ok(())
+        let mesh = Mesh::with_stride(points, cells, 4).unwrap();
+        TrapMap::from_mesh(mesh)
     }
 
-    #[test]
-    fn locate_points_in_grid() -> Result<()> {
-        let mesh = Mesh::grid(0., 1., 0., 1., 2, 2)?;
-
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        // Locate points in different cells
-        assert_eq!(trap_map.locate_one(&[0.25, 0.25]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0.75, 0.25]), Some(1));
-        assert_eq!(trap_map.locate_one(&[0.25, 0.75]), Some(2));
-        assert_eq!(trap_map.locate_one(&[0.75, 0.75]), Some(3));
-
-        Ok(())
+    #[rstest]
+    #[case::properly_inside([0.5, 0.5], Some(0))]
+    #[case::properly_inside([0.1, 0.1], Some(0))]
+    #[case::properly_inside([0.1, 0.9], Some(0))]
+    #[case::properly_inside([0.9, 0.9], Some(0))]
+    #[case::properly_inside([0.9, 0.1], Some(0))]
+    #[case::first_edge([0.5, 0.], Some(0))]
+    #[case::second_edge([0., 0.5], Some(0))]
+    #[case::third_edge([1., 0.5], Some(0))]
+    #[case::fourth_edge([0.5, 1.], Some(0))]
+    #[case::first_vertex([0., 0.], Some(0))]
+    #[case::second_vertex([1., 0.], Some(0))]
+    #[case::third_vertex([1., 1.], Some(0))]
+    #[case::fourth_vertex([0., 1.], Some(0))]
+    #[case::outside_south([0.5, -0.1], None)]
+    #[case::outside_south_east([1.5, -0.1], None)]
+    #[case::outside_east([1.5, 0.8], None)]
+    #[case::outside_north_east([1.5, 1.8], None)]
+    #[case::outside_north([0.5, 1.8], None)]
+    #[case::outside_north_west([-0.5, 1.8], None)]
+    #[case::outside_west([-0.5, 0.8], None)]
+    #[case::outside_south_west([-0.5, -0.8], None)]
+    fn locate_points_in_single_square(
+        single_square: &TrapMap,
+        #[case] point: [f64; 2],
+        #[case] cell_id: Option<usize>,
+    ) {
+        assert_eq!(single_square.locate_one(&point), cell_id);
     }
 
-    #[test]
-    fn locate_vertex() -> Result<()> {
+    #[fixture]
+    #[once]
+    fn grid() -> TrapMap {
+        TrapMap::from_mesh(Mesh::grid(0., 1., 0., 1., 2, 2).unwrap())
+    }
+
+    #[rstest]
+    #[case::bottom_left([0.25, 0.25], Some(0))]
+    #[case::bottom_right([0.75, 0.25], Some(1))]
+    #[case::top_left([0.25, 0.75], Some(2))]
+    #[case::top_right([0.75, 0.75], Some(3))]
+    fn locate_points_in_grid(
+        grid: &TrapMap,
+        #[case] point: [f64; 2],
+        #[case] cell_id: Option<usize>,
+    ) {
+        assert_eq!(grid.locate_one(&point), cell_id);
+    }
+
+    //  2  3
+    //  +--+
+    //  |\1|
+    //  |0\|
+    //  +--+
+    //  0  1
+    #[fixture]
+    #[once]
+    fn two_triangles() -> TrapMap {
         let mesh = Mesh::with_stride(
-            vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
-            vec![0, 1, 3, 1, 2, 3],
+            vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
+            vec![0, 1, 2, 1, 3, 2],
             3,
-        )?;
+        )
+        .unwrap();
+        TrapMap::from_mesh(mesh)
+    }
 
-        let trap_map = TrapMap::from_mesh(mesh);
-
+    #[rstest]
+    #[case::bottom_right_vertex([1., 0.])]
+    #[case::top_left_vertex([0., 1.])]
+    fn locate_shared_vertex(two_triangles: &TrapMap, #[case] point: [f64; 2]) {
         // For consistency with matplotlib, points located on vertices should yield the first polygon
         // in which they appear.
-        assert_eq!(trap_map.locate_one(&[1., 0.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[0., 1.]), Some(0));
+        assert_eq!(two_triangles.locate_one(&point), Some(0));
+    }
 
-        Ok(())
+    //  2  3
+    //  +--+
+    //  |\0|
+    //  |1\|
+    //  +--+
+    //  0  1
+    // Since the top triangle is the first one to be added, edge (2, 1) is visited before (1, 2)
+    #[fixture]
+    #[once]
+    fn two_triangles_top_right_first() -> TrapMap {
+        let mesh = Mesh::with_stride(
+            vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
+            vec![1, 3, 2, 0, 1, 2],
+            3,
+        )
+        .unwrap();
+        TrapMap::from_mesh(mesh)
+    }
+
+    #[rstest]
+    #[case::inside([0.1, 0.1], Some(1))]
+    #[case::inside([0.9, 0.9], Some(0))]
+    fn two_triangles_with_righty_of_twin_visited_first(
+        two_triangles_top_right_first: &TrapMap,
+        #[case] point: [f64; 2],
+        #[case] cell_id: Option<usize>,
+    ) {
+        assert_eq!(two_triangles_top_right_first.locate_one(&point), cell_id);
+    }
+
+    //  5
+    //  +          +
+    //  |\         |\
+    //  | \        |2\
+    // 3+--+4      +--+
+    //  |\ |\      |\ |\
+    //  | \| \     |0\|1\
+    //  +--+--+    +--+--+
+    //  0  1  2
+    #[fixture]
+    #[once]
+    fn multiply_connected_triangulation() -> TrapMap {
+        let mesh = Mesh::with_stride(
+            vec![[0., 0.], [1., 0.], [2., 0.], [0., 1.], [1., 1.], [0., 2.]],
+            vec![0, 1, 3, 1, 2, 4, 3, 5, 4],
+            3,
+        )
+        .unwrap();
+        TrapMap::from_mesh(mesh)
+    }
+
+    #[rstest]
+    #[case::inside([1. / 3., 1. / 3.], Some(0))]
+    #[case::inside([4. / 3., 1. / 3.], Some(1))]
+    #[case::inside([1. / 3., 4. / 3.], Some(2))]
+    #[case::in_hole([2. / 3., 2. / 3.], None)]
+    fn locate_in_multiply_connected_triangulation(
+        multiply_connected_triangulation: &TrapMap,
+        #[case] point: [f64; 2],
+        #[case] cell_id: Option<usize>,
+    ) {
+        assert_eq!(multiply_connected_triangulation.locate_one(&point), cell_id);
     }
 
     #[test]
-    fn trapezoidal_map_proptest() -> Result<()> {
+    fn trapezoidal_map_proptest() {
         let (xmin, xmax) = (0., 10.);
         let (ymin, ymax) = (0., 10.);
         let (nx, ny) = (6, 6); // Use numbers that don't divide the sides evenly on purpose
 
         // Create trapezoidal map
-        let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny)?;
+        let mesh = Mesh::grid(xmin, xmax, ymin, ymax, nx, ny).unwrap();
         let locator = TrapMap::from_mesh(mesh.clone()); // Clone the mesh to use it for verification with the winding number
 
         // Select the number of points generated. The higher it is, the more time the test takes.
@@ -1370,62 +1178,5 @@ pub(crate) mod tests {
                 assert!(point.is_inside(cell));
             }
         });
-
-        Ok(())
-    }
-
-    #[test]
-    fn multiply_connected_triangulation() -> Result<()> {
-        //
-        //  5
-        //  +          +
-        //  |\         |\
-        //  | \        |2\
-        // 3+--+4      +--+
-        //  |\ |\      |\ |\
-        //  | \| \     |0\|1\
-        //  +--+--+    +--+--+
-        //  0  1  2
-        //
-        let mesh = Mesh::with_stride(
-            vec![[0., 0.], [1., 0.], [2., 0.], [0., 1.], [1., 1.], [0., 2.]],
-            vec![0, 1, 3, 1, 2, 4, 3, 5, 4],
-            3,
-        )?;
-
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        assert_eq!(trap_map.locate_one(&[1. / 3., 1. / 3.]), Some(0));
-        assert_eq!(trap_map.locate_one(&[4. / 3., 1. / 3.]), Some(1));
-        assert_eq!(trap_map.locate_one(&[1. / 3., 4. / 3.]), Some(2));
-        // There is no triangle "3"
-        assert!(dbg!(trap_map.locate_one(&[2. / 3., 2. / 3.])).is_none());
-
-        Ok(())
-    }
-
-    #[test]
-    fn two_triangles_with_righty_of_twin_visited_first() -> Result<()> {
-        //
-        //  2  3
-        //  +--+
-        //  |\0|
-        //  |1\|
-        //  +--+
-        //  0  1
-        //
-        // Since the top triangle is the first one to be added, edge (2, 1) is visited before (1, 2)
-        let mesh = Mesh::with_stride(
-            vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
-            vec![1, 3, 2, 0, 1, 2],
-            3,
-        )?;
-
-        let trap_map = TrapMap::from_mesh(mesh);
-
-        assert_eq!(trap_map.locate_one(&[0.1, 0.1]), Some(1));
-        assert_eq!(trap_map.locate_one(&[0.9, 0.9]), Some(0));
-
-        Ok(())
     }
 }
