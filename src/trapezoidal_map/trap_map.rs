@@ -150,12 +150,6 @@ impl Default for BoundingBox {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Orientation {
-    Counterclockwise,
-    Clockwise,
-}
-
 impl TrapMap {
     pub(crate) fn new() -> Self {
         Self {
@@ -188,12 +182,14 @@ impl TrapMap {
         let mut righties = HashMap::with_capacity(n_edges);
         let mut vertex_faces = vec![None; n_vertices];
         for (face, cell) in mesh.cells().enumerate() {
-            // We need to determine the orientation of the current cell in order to know if the
-            // face is to the left or to the right of each of its edges.
+            // We determine the orientation of the cell and make it counterclockwise in all cases.
+            // This is useful because it allows to determine if the face is below or above the edge,
+            // and this makes it easier to deal with twins.
+            //
             // To do so, we find the leftmost point (and pick the bottommost one in case of ties),
             // and then determine the sign of the angle at that point.
             // See: https://en.wikipedia.org/wiki/Curve_orientation#Orientation_of_a_simple_polygon
-            let orientation = {
+            let cell_iter: Box<dyn Iterator<Item = (&usize, &usize)>> = {
                 let b = cell
                     .iter()
                     .enumerate()
@@ -215,12 +211,14 @@ impl TrapMap {
                 );
                 let det = (xb - xa) * (yc - ya) - (xc - xa) * (yb - ya);
                 if det > 0. {
-                    Orientation::Counterclockwise
+                    // Cell is oriented counterclockwise so we can keep the order
+                    Box::new(cell.iter().circular_tuple_windows())
                 } else {
-                    Orientation::Clockwise
+                    // Cell is oriented counterclockwise so we reverse it
+                    Box::new(cell.iter().rev().circular_tuple_windows())
                 }
             };
-            for (&p, &q) in cell.iter().circular_tuple_windows() {
+            for (&p, &q) in cell_iter {
                 vertex_faces[p].get_or_insert(face);
                 let [x1, y1] = mesh.coords(p);
                 let [x2, y2] = mesh.coords(q);
@@ -228,52 +226,44 @@ impl TrapMap {
                     x2.total_cmp(&x1).then_with(|| y2.total_cmp(&y1)),
                     Ordering::Greater
                 ) {
-                    // Remove twin if encountered before
-                    let twin_face = lefties.remove(&[q, p]).map(|(face, _, _)| face);
+                    // This is a righty
 
-                    let (face_above, face_below) = match orientation {
-                        Orientation::Counterclockwise => (Some(face), twin_face),
-                        Orientation::Clockwise => (twin_face, Some(face)),
-                    };
+                    // Remove twin if encountered before
+                    let twin_face = lefties.remove(&[q, p]).map(|(face, _)| face);
+
+                    // Remember we have visited this righty and store it
+                    let value = righties.insert([p, q], edges.len());
+                    debug_assert_eq!(value, None);
                     edges.push(Some(Edge {
                         p,
                         q,
-                        face_above,
-                        face_below,
+                        face_above: Some(face),
+                        face_below: twin_face,
                     }));
-
-                    // Remember we have visited this righty
-                    righties.insert([p, q], edges.len() - 1);
                 } else if let Some(&edge_id) = righties.get(&[q, p]) {
                     // This is a lefty and we have seen its righty before => we need to set this
                     // face as below/above the righty
                     let edge = edges[edge_id].as_mut().expect("Edge should be Some");
-                    let _ = match orientation {
-                        Orientation::Counterclockwise => edge.face_below.insert(face),
-                        Orientation::Clockwise => edge.face_above.insert(face),
-                    };
+                    let _ = edge.face_below.insert(face);
                 } else {
                     // This is a lefty and we haven't seen its righty twin yet
                     // We don't know yet if the righty twin exists in the mesh, but in case it
                     // doesn't we store this edge along with the corresponding face and the current
                     // index in the list of edges
-                    lefties.insert([p, q], (face, edges.len(), orientation));
+                    let value = lefties.insert([p, q], (face, edges.len()));
+                    debug_assert_eq!(value, None);
                     edges.push(None);
                 }
             }
         }
         // By the end of the loop we should only have lonely lefties in the hashmap
         // We need to insert their twins in the vec of edges!
-        for ([p, q], (face, idx, orientation)) in lefties {
-            let (face_above, face_below) = match orientation {
-                Orientation::Counterclockwise => (None, Some(face)),
-                Orientation::Clockwise => (Some(face), None),
-            };
+        for ([p, q], (face, idx)) in lefties {
             edges[idx] = Some(Edge {
                 p: q,
                 q: p,
-                face_above,
-                face_below,
+                face_above: None,
+                face_below: Some(face),
             });
             debug_assert!(
                 vertex_faces[p].is_some(),
@@ -1111,6 +1101,39 @@ pub(crate) mod tests {
         #[case] cell_id: Option<usize>,
     ) {
         assert_eq!(two_triangles_top_right_first.locate_one(&point), cell_id);
+    }
+
+    //  2  3
+    //  +--+
+    //  |\0|
+    //  |1\|
+    //  +--+
+    //  0  1
+    // Edge (2, 1) is shared by cells 0 and 1 and has the same orientation in both
+    #[fixture]
+    #[once]
+    fn shared_edge_with_same_orientation() -> TrapMap {
+        let mesh = Mesh::with_stride(
+            vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
+            vec![1, 3, 2, 0, 2, 1],
+            3,
+        )
+        .unwrap();
+        TrapMap::from_mesh(mesh)
+    }
+
+    #[rstest]
+    #[case::inside([0.1, 0.1], Some(1))]
+    #[case::inside([0.9, 0.9], Some(0))]
+    fn same_edge_encountered_twice_with_same_orientation(
+        shared_edge_with_same_orientation: &TrapMap,
+        #[case] point: [f64; 2],
+        #[case] cell_id: Option<usize>,
+    ) {
+        assert_eq!(
+            shared_edge_with_same_orientation.locate_one(&point),
+            cell_id
+        );
     }
 
     //  5
