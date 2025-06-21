@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Incomplete assignment of faces to their edges, which could
+  cause a panic at point location query
+
 ### Removed
 
 - The `parents` field of the `Node` type (it was only
