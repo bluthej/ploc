@@ -228,12 +228,12 @@ impl Mesh {
     }
 
     /// Returns an iterator over the vertices of the [`Mesh`].
-    pub(crate) fn points(&self) -> Iter<[f64; 2]> {
+    pub(crate) fn points(&self) -> Iter<'_, [f64; 2]> {
         self.points.iter()
     }
 
     /// Returns an iterator over the vertices of a particular cell.
-    pub fn cell_vertices(&self, idx: usize) -> CellVertices {
+    pub fn cell_vertices(&self, idx: usize) -> CellVertices<'_> {
         let (start, end) = match &self.offsets {
             Offsets::Implicit(stride) if idx * stride < self.cells.len() => {
                 (idx * stride, (idx + 1) * stride)
