@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use rand::prelude::*;
+use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::{cmp::Ordering, collections::HashMap};
 
