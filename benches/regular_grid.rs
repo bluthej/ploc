@@ -29,9 +29,9 @@ pub fn locate_points(c: &mut Criterion) {
         let mesh = Mesh::grid(xmin, xmax, ymin, ymax, n, n).unwrap();
         let trap_map = TrapMap::from_mesh(mesh);
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let query: Vec<_> = (0..42_000)
-            .map(|_| [rng.gen::<f64>() * xmax, rng.gen::<f64>() * ymax])
+            .map(|_| [rng.random::<f64>() * xmax, rng.random::<f64>() * ymax])
             .collect();
 
         c.bench_with_input(BenchmarkId::new("Locate points", n), &query, |b, q| {

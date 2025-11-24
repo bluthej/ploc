@@ -32,12 +32,12 @@ fn bench_rect(c: &mut Criterion) {
         .collect();
 
     // Random number generator
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let mut group = c.benchmark_group("Rectilinear mesh");
     for (n, trap_map, rect_locator) in izip!(ns, trap_maps, rect_locators) {
         let query: Vec<_> = (0..420)
-            .map(|_| [rng.gen::<f64>() * xmax, rng.gen::<f64>() * ymax])
+            .map(|_| [rng.random::<f64>() * xmax, rng.random::<f64>() * ymax])
             .collect();
         group.bench_with_input(BenchmarkId::new("TrapMap", n), &query, |b, q| {
             b.iter(|| {
